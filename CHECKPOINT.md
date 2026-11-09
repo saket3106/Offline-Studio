@@ -6,8 +6,8 @@ assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. I
 Phase: repo cleanup + public release v1.0.0 (README, tools/make_release_zip.py, single 1.8 GB zip). Email auto-schedule, time parsing and top-right toast installed in Route-20261109m; scheduled send VERIFIED-REAL.
 
 ## NEXT STEP (exact, executable)
-Owner decides whether to add a "best detail" option that uses the base model (still on disk) for the Quality preset.
-Then QUEUE 2.
+Owner attaches OfflineGPT\OfflineStudio-v1.0.0-win64.zip (1.75 GB) to GitHub release v1.0.0 and publishes. Then QUEUE 2.
+Git: work on `main` (pushed as one clean v1.0.0 commit 64d419b on origin/main); old fix/ui-voice-overhaul kept local only (private history).
 
 ## DONE
 - Whisper warm CUDA reuse + CPU threads · 2811f4e · VERIFIED-REAL (STT 21 s → 222–366 ms)
