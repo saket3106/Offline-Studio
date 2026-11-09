@@ -17,7 +17,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 SCHEMA_VERSION = 1
-SUPPORTED_DOCUMENTS = {'.pdf','.txt','.md','.docx','.pptx'}
+from document_tools import SUPPORTED, TEXT_SOURCES
+SUPPORTED_DOCUMENTS = SUPPORTED | TEXT_SOURCES
 
 
 def validate_backup(path):
@@ -245,6 +246,11 @@ class LocalWorkspace:
         """
         if action not in {'hide','restore','recycle','purge'}:raise ValueError('Unsupported Library operation.')
         ids=list(dict.fromkeys(str(i) for i in ids if i))
+        if action in {'hide','restore'}:
+            with self.lock:
+                rows=self.con.execute('SELECT id,path,deleted FROM library_images').fetchall()
+                keys={library_asset_key(p,self.directory) for i,p,d in rows if i in ids and d!=2}
+                ids=list(dict.fromkeys(ids+[i for i,p,d in rows if d!=2 and library_asset_key(p,self.directory) in keys]))
         if not ids or len(ids)>500:raise ValueError('Select between 1 and 500 Library items.')
         if action in {'recycle','purge'} and not confirmed:raise ValueError('Explicit confirmation is required before deleting files.')
         self._library_journal();batch=uuid.uuid4().hex;results=[];selected=set(ids)
@@ -277,7 +283,7 @@ class LocalWorkspace:
                         self.con.execute('BEGIN IMMEDIATE')
                         row=self.con.execute('SELECT path,deleted FROM library_images WHERE id=?',(iid,)).fetchone()
                         if not row:raise ValueError('Library item no longer exists.')
-                        path=row[0]
+                        path=str(Path(library_asset_key(row[0],self.directory)))
                         if row[1]==2:raise ValueError('This item was permanently deleted; its audit record cannot be restored or hidden.')
                         if action=='purge' and row[1]!=1:raise ValueError('Move the image to Library Trash before permanent deletion.')
                         if action in {'hide','restore','recycle','purge'}:
@@ -936,3 +942,24 @@ def redacted_diagnostics(status,voice,workspace,config):
             'runtime':{k:status.get(k) for k in keys},'speech':{k:voice.get(k) for k in ('state','provider','metrics')},
             'database':workspace,'configuration':{k:config.get(k) for k in ('chat_backend','chat_context','model_lifecycle_mode','flux_steps','flux_backend','speech_engine','speech_speed')},
             'dependencies':dependencies,'privacy':'No conversation content, document text, file paths, tokens or credentials included.'}
+
+def library_asset_key(path,base):
+    p=Path(path)
+    return os.path.normcase(str((p if p.is_absolute() else Path(base)/p).resolve()))
+
+
+def group_library_aliases(images):
+    """Presentation only. Keep all IDs and metadata; no DB/file mutation."""
+    grouped={}
+    for image in images:
+        key=os.path.normcase(str(Path(image['path']).resolve()))
+        grouped.setdefault(key,[]).append(image)
+    result=[]
+    for members in grouped.values():
+        best=max(members,key=lambda x:(bool(x.get('messageId')),bool(x.get('userPrompt') or x.get('prompt')),bool(x.get('generationSettings'))))
+        item=dict(best);item['aliasIds']=[x['id'] for x in members]
+        item['aliasCount']=len(members)
+        item['aliasMetadata']=[{k:x.get(k) for k in ('id','parentId','operation','displayName','prompt','userPrompt')} for x in members]
+        result.append(item)
+    return result
+

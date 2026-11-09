@@ -74,9 +74,12 @@ class InstalledInferenceRegressions(unittest.TestCase):
         self.assertTrue(all(not t['classification_only'] for t in tasks))
     def test_small_machine_bounds_context_and_cpu_profile(self):
         gib=1024**3
+        # 16 GiB machine: context follows free RAM (4096 / 3072 / 2048), CPU bounds stay.
         p=_local_memory_profile({'total':16*gib,'available':8*gib,'pagefile_available':20*gib},4096)
-        self.assertEqual(p['context'],2048);self.assertLessEqual(p['batch'],64);self.assertLessEqual(p['threads'],4)
+        self.assertEqual(p['context'],4096);self.assertLessEqual(p['batch'],64);self.assertLessEqual(p['threads'],4)
         self.assertEqual(p['load_mode'],'none')
+        self.assertEqual(_local_memory_profile({'total':16*gib,'available':int(2.5*gib),'pagefile_available':20*gib},4096)['context'],3072)
+        self.assertEqual(_local_memory_profile({'total':16*gib,'available':int(1.2*gib),'pagefile_available':20*gib},4096)['context'],2048)
     def test_larger_machine_keeps_requested_context(self):
         gib=1024**3
         p=_local_memory_profile({'total':32*gib,'available':20*gib,'pagefile_available':30*gib},4096)
@@ -90,10 +93,15 @@ class InstalledInferenceRegressions(unittest.TestCase):
     def test_native_launch_uses_measured_thread_and_load_profile(self):
         from integrated_runtime import _LocalLlamaServer
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory);model=root/'fixture.gguf';model.write_bytes(b'fixture')
+            try:
+                from test_model_inspection import fixture
+            except ModuleNotFoundError:
+                from tests.test_model_inspection import fixture
+            root=Path(directory);model=root/'fixture.gguf'
+            model.write_bytes(fixture([('general.architecture',8,'qwen3'),('general.name',8,'Fixture'),('tokenizer.chat_template',8,'{{ messages }}')]))
             runtime=_LocalLlamaServer(root);process=Mock();process.poll.return_value=None
             response=Mock();response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False);response.status=200
-            with patch.object(runtime,'stop'),patch.object(runtime,'_server_binary',return_value=root/'llama-server.exe'),patch.object(runtime,'_check_runtime_files'),patch('integrated_runtime.subprocess.Popen',return_value=process) as launch,patch('integrated_runtime.urllib.request.urlopen',return_value=response),patch('integrated_runtime.physical_memory_status',return_value={'available':4*1024**3}):
+            with patch.object(runtime,'stop'),patch.object(runtime,'_server_binary',return_value=root/'llama-server.exe'),patch.object(runtime,'_check_runtime_files'),patch('integrated_runtime.subprocess.Popen',return_value=process) as launch,patch.object(runtime._local_opener,'open',return_value=response),patch('integrated_runtime.physical_memory_status',return_value={'available':4*1024**3}):
                 try:runtime.start(model,2048,'auto',lambda _:None,memory_profile={'batch':64,'ubatch':32,'threads':4,'load_mode':'none'})
                 finally:
                     if runtime.log_handle:runtime.log_handle.close()

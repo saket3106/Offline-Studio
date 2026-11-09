@@ -8,10 +8,54 @@ from document_tools import extract_document_cached
 from rag_engine import prepare_document_context, search_document_exact
 from intelligence import analyze_request, build_system_prompt
 
+PDF = Path(r"C:\Users\mesak\Downloads\SELF_LEARNING_Alex_Doe_Final.pdf")
 
 class SprintDocumentTests(unittest.TestCase):
+    @unittest.skipUnless(PDF.is_file(), 'Actual user PDF unavailable')
+    def test_real_physical_pages_and_outline(self):
+        text, meta = extract_document_cached(PDF, None)
+        self.assertEqual(meta['pages'], 29)
+        self.assertEqual([h['page'] for h in meta['headings']], [1,12,15,16,19,21,28])
+        self.assertEqual(len(meta['page_map']), 29)
+        self.assertEqual(meta['filename'], PDF.name)
+        _, repeated = extract_document_cached(PDF, None)
+        self.assertTrue(repeated['parse_cache_hit'])
 
+    @unittest.skipUnless(PDF.is_file(), 'Actual user PDF unavailable')
+    def test_actual_literal_workers_never_infer_or_edit(self):
+        for phrase, page in [('Sample values for illustration only.',8),
+              ('Replace the percentages with actual Google Forms results if survey responses are collected.',29),
+              ('Purple satellites manufacture invisible bicycles 7391',None)]:
+            worker=app.DocumentWorker('test','Search the attached PDF for the exact phrase "'+phrase+'".',str(PDF),'',None)
+            answers,errors,metrics=[],[],[]
+            worker.done.connect(answers.append);worker.failed.connect(errors.append);worker.metrics.connect(metrics.append)
+            worker.run()
+            self.assertEqual(errors,[])
+            result=json.loads(answers[0])
+            self.assertEqual(result['kind'],'answer')
+            match=result['meta']['document_search']['matches'][0]
+            self.assertEqual(match['pages'],[page] if page else [])
+            self.assertEqual(match['found'],bool(page))
+            self.assertEqual(metrics[-1]['model_calls'],0)
+            self.assertEqual(metrics[-1]['prompt_tokens'],0)
 
+    @unittest.skipUnless(PDF.is_file(), 'Actual user PDF unavailable')
+    def test_bounded_grounded_evidence_and_index_reuse(self):
+        text,meta=extract_document_cached(PDF,None)
+        query='Are the performance comparison and questionnaire results actual measurements or illustrative examples?'
+        telemetry={};context=prepare_document_context(text,query,PDF.name,3800,meta,telemetry)
+        self.assertLessEqual(len(context),3800)
+        self.assertIn('PDF page 8 |',context);self.assertIn('PDF page 29 |',context)
+        self.assertIn('Sample values for illustration only.',context)
+        self.assertIn('illustrative questionnaire-analysis',context)
+        prepare_document_context(text,query,PDF.name,3800,meta,telemetry)
+        self.assertTrue(telemetry['index_cache_hit'])
+        analysis=analyze_request(query,True,context)
+        system=build_system_prompt('policy',analysis,rag_context=context)
+        self.assertLess(len(system),4600)
+        self.assertNotIn('You MUST output',system)
+        many=prepare_document_context(text,[query]*8,PDF.name,3800,meta)
+        self.assertLessEqual(len(many),3800)
 
     def test_line_wrap_match_has_physical_page_and_matching_mode(self):
         text='An earlier page.\n\nWrap this\n   sentence.'
@@ -73,13 +117,15 @@ class SprintRetryTests(unittest.TestCase):
     def test_latest_retry_replays_original_request_and_attachment_without_new_turn(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
-        for prompt, answer, attachment in [
+        for prompt, answer, rel_attachment in [
             ('Explain TCP.', 'TCP is a transport protocol.', ''),
             ('Write a Python function.', '```python\ndef square(x):\n    return x*x\n```', ''),
             ('Explain the attached PDF.', 'A grounded document answer.', 'original.pdf'),
             ('Explain the attached PDF.', 'Document error: interrupted', 'original.pdf'),
         ]:
             with self.subTest(prompt=prompt,answer=answer), tempfile.TemporaryDirectory() as folder, patch.object(app,'DB_PATH',Path(folder)/'history.db'):
+                import gc
+                attachment = str(Path(folder) / rel_attachment) if rel_attachment else ''
                 store=app.Store();cid=store.new_chat()
                 store.add(cid,'user',prompt,attachment)
                 store.add(cid,'assistant',answer,metrics={'duration_seconds':3})
@@ -92,6 +138,8 @@ class SprintRetryTests(unittest.TestCase):
                 self.assertEqual(kwargs['replay_response'],mid)
                 self.assertEqual(len(store.messages(cid)),2)
                 store.con.close()
+                del backend, store
+                gc.collect()
 
     def test_retry_executes_only_failed_model_subtask(self):
         from types import SimpleNamespace

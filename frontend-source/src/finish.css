@@ -1,0 +1,94 @@
+/* Final polish layer (loaded last). Fixes from the real-app UI audit, 2026-11-07.
+   Each block names the audit item it addresses. */
+
+/* Typography: UI text uses the UI font; numbers stay aligned with tabular figures (audit #9, #12). */
+.runtime-statusbar, .runtime-statusbar *, .library-card-meta, .meta-chip, .model-chip, .assistant-model-pill, .details-meta-item strong {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.runtime-statusbar { letter-spacing: 0; }
+
+/* Chats sidebar: a comfortable filter field (audit #7). */
+.history-search-wrap { height: 32px; padding: 0 10px; }
+.history-search { height: 100%; font-size: 13px; }
+
+/* Projects empty state: matched control heights, no wrapping, quieter title (audit #3, #5). */
+.project-empty-actions { display: flex; gap: 8px; align-items: stretch; width: min(100%, 520px); }
+.project-empty-actions .project-title-input {
+  flex: 1; min-width: 0; height: 40px; box-sizing: border-box; padding: 0 12px;
+  font-size: 14px; font-weight: 400; border-radius: var(--radius-control);
+}
+.project-empty-actions .primary-button {
+  height: 40px; min-width: 148px; padding: 0 16px; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-control);
+}
+.project-overview-empty h2 { font-size: 20px; font-weight: 600; margin: 8px 0 4px; }
+.project-overview-empty > p { font-size: 14px; color: var(--text-secondary); max-width: 520px; }
+.templates-label { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+.templates-grid { align-items: stretch; }
+.templates-grid .template-card { height: 100%; box-sizing: border-box; }
+/* One border on the project search field, not two (audit #4). */
+.project-search-bar .project-search-input { border: 0 !important; box-shadow: none !important; background: transparent !important; outline: none; }
+.project-search-bar:focus-within { border-color: var(--border-focus); }
+
+/* Knowledge: standard field style and breathing room (audit #6). */
+.knowledge-workspace select {
+  background: var(--bg-surface-1); border: 1px solid var(--border-control); border-radius: var(--radius-control);
+  color: var(--text-primary); height: 36px; padding: 0 10px; font-size: 13px; max-width: 360px;
+}
+.knowledge-workspace .knowledge-actions { margin-top: 12px; gap: 8px; }
+.knowledge-workspace button:disabled { opacity: .55; }
+
+/* Models: chevron disclosure instead of a unicode triangle (audit #10). */
+.model-compatibility-note > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.model-compatibility-note > summary::-webkit-details-marker { display: none; }
+.model-compatibility-note > summary::before {
+  content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--motion-fast) ease-out; opacity: .7;
+}
+.model-compatibility-note[open] > summary::before { transform: rotate(45deg); }
+
+/* Settings: last rail item is not clipped at the scroll edge (audit #11). */
+.settings-nav, .settings-rail, .settings-sidebar { padding-bottom: 24px; }
+
+@media (prefers-reduced-motion: reduce) { .model-compatibility-note > summary::before { transition: none; } }
+
+/* Projects: list panel sits on the canvas with a divider, not as a floating grey slab (audit #4). */
+.project-setup { background: transparent; border-right: 1px solid var(--border-hairline); padding: 4px 16px 16px 0; }
+.project-overview-empty .templates-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(100%, 680px); }
+@media (max-width: 1100px) { .project-overview-empty .templates-grid { grid-template-columns: 1fr; } }
+.project-starter-templates { width: min(100%, 680px); }
+
+/* Knowledge: project picker is a compact control, status line hidden when empty (audit #6). */
+.knowledge-workspace .knowledge-actions .themed-select-trigger { flex: 0 1 260px; width: 260px; max-width: 100%; margin-left: auto; height: 36px; }
+.knowledge-workspace .knowledge-status:empty { display: none; }
+.knowledge-workspace .knowledge-search { margin-top: 16px; }
+
+/* Declutter pass (user recording 2026-11-07 14:52): one place per function. */
+/* Top bar: search, theme and the actions menu stay; the developer context inspector is hidden. */
+.topbar .icon-button[aria-label="Workspace context"] { display: none; }
+/* Composer: "Offline / Web" already chooses where answers come from; knowledge settings live on the Knowledge page. */
+.composer-chip[title="Knowledge and research settings"] { display: none; }
+.composer-mode-control { border: 0; padding: 0; background: transparent; }
+/* Status bar: model + state only; memory readings live in Settings → Runtime status. */
+.runtime-statusbar .gpu-status, .runtime-statusbar button[title^="Available system RAM"], .runtime-statusbar .status-private { display: none; }
+/* Sidebar: group counts add noise. */
+.history-group-toggle > span:last-child:not(:first-child) { display: none; }
+/* Image Studio: web references are one quiet disclosure, not a second page under the studio. */
+.studio-references { margin: 24px auto 32px; width: min(100% - 48px, 1100px); border-top: 1px solid var(--border-hairline); padding-top: 14px; }
+.studio-references > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.studio-references > summary::-webkit-details-marker { display: none; }
+.studio-references > summary span { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.studio-references > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg) translateY(-1px); transition: transform var(--motion-fast) ease-out; opacity: .7; align-self: center; }
+.studio-references[open] > summary::before { transform: rotate(45deg); }
+.studio-references .knowledge-workspace { padding-top: 12px; }
+.studio-references .workspace-heading { display: none; }
+
+/* One disclosure style app-wide: a quiet chevron instead of the browser's triangle. */
+:where(details:not(.studio-references):not(.model-compatibility-note)) > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+:where(details:not(.studio-references):not(.model-compatibility-note)) > summary::-webkit-details-marker { display: none; }
+:where(details:not(.studio-references):not(.model-compatibility-note)) > summary::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--motion-fast) ease-out; opacity: .6; margin: 0 2px;
+}
+:where(details[open]:not(.studio-references):not(.model-compatibility-note)) > summary::before { transform: rotate(45deg); }

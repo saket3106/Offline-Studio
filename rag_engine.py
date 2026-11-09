@@ -168,8 +168,26 @@ def chunk_text(
 
 
 def _tokenize(text: str) -> list[str]:
-    """Tokenize query or document text into lowercased alphanumeric terms."""
-    return re.findall(r"\b[a-z0-9]{2,}\b", text.lower())
+    """Unicode letter/number terms, retaining marks inside words (e.g. Hindi).
+
+    Normalize only index/query keys; excerpts and page offsets stay original.
+    Underscores and punctuation split identifiers into searchable components.
+    Keep the existing omission of one-character ASCII terms.
+    """
+    tokens, current = [], []
+    def flush():
+        if current:
+            word = ''.join(current)
+            if len(word) > 1 or not word.isascii(): tokens.append(word)
+            current.clear()
+    for char in unicodedata.normalize('NFKC', str(text)).casefold():
+        kind = unicodedata.category(char)[0]
+        if kind in {'L', 'N'} or kind == 'M' and current:
+            current.append(char)
+        else:
+            flush()
+    flush()
+    return tokens
 
 
 class BM25Index:
@@ -219,7 +237,7 @@ class BM25Index:
 
         query_tokens = _tokenize(query)
         if not query_tokens:
-            return [(chunk, 0.0) for chunk in self.chunks[:top_k]]
+            return []
 
         scores: list[float] = [0.0] * self.num_docs
 
@@ -342,7 +360,7 @@ def prepare_document_context(content: str, query: str = '', source_name: str = '
         hit = _cached_document_index.cache_info().hits > before
     index_ms = (time.perf_counter()-index_started)*1000
     queries=query if isinstance(query,list) else [query]
-    pools=[index.search(str(value).strip() or 'summary overview introduction key points',top_k=8) for value in queries]
+    pools=[index.search(str(value).strip(),top_k=8) for value in queries]
     ranked=[];seen=set()
     for rank in range(8):
         for pool in pools:
@@ -365,8 +383,6 @@ def prepare_document_context(content: str, query: str = '', source_name: str = '
             excerpt = excerpt.rsplit(' ', 1)[0] + ' [excerpt truncated]'
         selected.append((DocumentChunk(chunk.chunk_id, chunk.source_name, chunk.chunk_index, excerpt, chunk.metadata), score))
         available -= len(excerpt) + 100
-    if not selected and not header:
-        selected = [(DocumentChunk('start', source_name, 0, clean_text(content)[:max(0, cap-650)]), 0)]
     safe_header = sanitize_untrusted_document_content(header)
     context = format_rag_context(selected)
     if safe_header:
@@ -381,5 +397,6 @@ def prepare_document_context(content: str, query: str = '', source_name: str = '
         if safe_header:context='<document_context untrusted="true">\n'+safe_header+'\n</document_context>\n'+context
     if telemetry is not None:
         telemetry.update(pdf_index_ms=round(index_ms,2), index_cache_hit=hit,
+                         retrieved_chunks=len(selected),
                          retrieval_ms=round((time.perf_counter()-started)*1000,2), context_characters=len(context))
     return context

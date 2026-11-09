@@ -191,6 +191,19 @@ def calculate_token_budget(
     return max_prompt, output_budget
 
 
+def length_target_output_tokens(requested_words: int, total_context: int | None = None) -> int:
+    """Output budget for an explicit length request, in ONE generation.
+
+    ~1.6 tokens per requested word, +30% headroom, floor 1,024, then x1.1.
+    Capped by the available context when it is known.
+    """
+    words = max(0, int(requested_words or 0))
+    budget = int(max(1024, words * 1.6 * 1.3) * 1.1)
+    if total_context:
+        budget = min(budget, max(256, int(total_context) - 512))
+    return budget
+
+
 def calculate_dynamic_context_budget(
     category: str = "normal",
     prompt_text: str = "",
@@ -200,6 +213,7 @@ def calculate_dynamic_context_budget(
     total_context: int = 4096,
     safety_margin: int = 128,
     task_count: int = 0,
+    requested_words: int | None = None,
 ) -> tuple[int, list[dict[str, str]]]:
     """Dynamically allocate output token budget and trim older history turns as needed.
 
@@ -228,6 +242,9 @@ def calculate_dynamic_context_budget(
         target_output = min(2200, max(900, 300 + 160 * max(1, int(task_count or 1))))
     else:
         target_output = 800
+
+    if requested_words:
+        target_output = max(target_output, length_target_output_tokens(requested_words))
 
     system_tokens = estimate_tokens(system_text)
     user_tokens = estimate_tokens(prompt_text)

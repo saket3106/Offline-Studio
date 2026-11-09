@@ -99,7 +99,21 @@ Thumbs.db
 .idea/
 .vscode/
 /.source-sync.lock
+/.offlinegpt-autosync-mutex
 .offlinegpt-sync-*
 
 # Curated icons and synthetic documentation screenshots are intentional assets.
 # Do not ignore all PNG/ICO/SVG files: the build needs frontend-source/public.
+
+# Current canonical development outputs (not application source).
+# Local engineering records may include private paths, prompts and screenshots.
+# Existing tracked sanitized documents remain tracked; review any new document explicitly.
+/docs/
+/test_output.txt
+/test_verbose.txt
+/build_log.txt
+/pytest-output*.txt
+/test-results*.txt
+/SourceMirror/
+/runtime/
+# Never use `git add .` as a substitute for exact-path publication review.

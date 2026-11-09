@@ -16,6 +16,8 @@ from pathlib import Path
 
 
 SUPPORTED = {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".html", ".htm", ".txt", ".md", ".rtf"}
+# Read-only Knowledge sources; recognizing these does not authorize code execution.
+TEXT_SOURCES={".py",".js",".jsx",".ts",".tsx",".json",".yaml",".yml",".toml",".ini",".cfg",".css",".sql",".rs",".go",".java",".cpp",".c",".h",".sh",".ps1"}
 
 
 def is_document(path: str | Path) -> bool:
@@ -304,7 +306,7 @@ def extract_document(path: str | Path, limit: int | None = 70000) -> tuple[str, 
     elif ext in {".html", ".htm"}:
         text = _html_text(path.read_text(encoding="utf-8", errors="replace"))
         meta = {"images": 0}
-    elif ext in {".txt", ".md", ".rtf"}:
+    elif ext in {".txt", ".md", ".rtf"}|TEXT_SOURCES:
         text = path.read_text(encoding="utf-8", errors="replace")
         if ext == ".rtf":
             text = re.sub(r"\\'[0-9a-fA-F]{2}|\\[a-zA-Z]+-?\d* ?|[{}]", "", text)
@@ -1263,7 +1265,32 @@ def _created_file_path(title: str, extension: str, output_dir: str | Path) -> Pa
     return folder / f"{stem}_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{extension}"
 
 
-def create_document_from_markdown(markdown: str, extension: str, output_dir: str | Path, output_mode: OutputMode | str = OutputMode.PDF_EXPORT) -> tuple[str, str]:
+def literal_document_request(prompt: str, extension: str) -> dict | None:
+    """Recognize explicit literal-body exports, not open-ended writing requests.
+
+    Everything after the marked colon is user data. Never ask a language model
+    to expand text the user explicitly supplied verbatim. Ambiguous requests
+    retain the normal authoring path; presentations require their slide layout.
+    """
+    if extension not in {'.pdf', '.docx'} or resolve_output_mode(prompt)[0] == OutputMode.CHAT:
+        return None
+    match = re.search(
+        r'\b(?:exactly|verbatim)\s+(?:this|the following)\s+(?:sentence|text|content)'
+        r'(?:\s+(?:in|as)\s+(?:its|the|document\'s)\s+body)?\s*:\s*(.+)\Z',
+        prompt, re.I | re.S,
+    )
+    if not match or not match[1].strip() or len(match[1]) > 100_000:
+        return None
+    prefix = prompt[:match.start()]
+    title = re.search(r'\btitled\s+(.+?)\s+(?:with|and|containing)\s*$', prefix, re.I)
+    # Without an unambiguous title/body boundary, let ordinary authoring handle
+    # the request rather than silently guessing where the user's title ends.
+    if not title or len(title[1]) > 160 or '\n' in title[1]:
+        return None
+    return {'title':title[1].strip().strip('"“”'), 'body':match[1].strip()}
+
+
+def create_document_from_markdown(markdown: str, extension: str, output_dir: str | Path, output_mode: OutputMode | str = OutputMode.PDF_EXPORT, *, literal_content: dict | None = None) -> tuple[str, str]:
     """Create and re-read a local PDF, DOCX, or PPTX from GPT-authored text."""
     if output_mode == OutputMode.CHAT or str(output_mode).upper() == "CHAT":
         pdf_created = False
@@ -1272,9 +1299,16 @@ def create_document_from_markdown(markdown: str, extension: str, output_dir: str
 
     if extension not in {".pdf", ".docx", ".pptx"}:
         raise ValueError("Create a PDF, Word document, or PowerPoint presentation.")
-    blocks = _document_blocks(markdown)
+    if literal_content is not None:
+        if extension not in {'.pdf', '.docx'}:
+            raise ValueError('Literal-body output supports PDF and Word documents.')
+        if set(literal_content) != {'title','body'} or not all(isinstance(v,str) and v.strip() for v in literal_content.values()):
+            raise ValueError('Literal document content requires a nonempty title and body.')
+        blocks = [('title',literal_content['title']),('body',literal_content['body'])]
+    else:
+        blocks = _document_blocks(markdown)
     meaningful = [(kind, value) for kind, value in blocks if kind != "space" and value]
-    if not meaningful or sum(len(value) for _, value in meaningful) < 40:
+    if not meaningful or (literal_content is None and sum(len(value) for _, value in meaningful) < 40):
         raise ValueError("The local chat model did not produce enough document content to save safely.")
     title = next((value for kind, value in meaningful if kind == "title"), meaningful[0][1])
     target = _created_file_path(title, extension, output_dir)
@@ -1286,8 +1320,12 @@ def create_document_from_markdown(markdown: str, extension: str, output_dir: str
         else:
             _create_pdf(target, blocks)
         extracted, meta = extract_document(target)
-        if not target.is_file() or target.stat().st_size < 500 or len(extracted.strip()) < 35:
+        if not target.is_file() or target.stat().st_size < 500 or (literal_content is None and len(extracted.strip()) < 35):
             raise ValueError("The generated document failed its saved-file verification.")
+        if literal_content is not None:
+            expected = ' '.join((literal_content['title']+' '+literal_content['body']).split())
+            if ' '.join(extracted.split()) != expected:
+                raise ValueError('The saved document did not preserve the exact requested title and body.')
         if " ".join(title[:40].split()).casefold() not in " ".join(extracted.split()).casefold():
             raise ValueError("The saved document does not contain its requested title.")
         amount = meta.get("slides", meta.get("pages", 1))

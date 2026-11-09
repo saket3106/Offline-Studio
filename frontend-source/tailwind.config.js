@@ -15,10 +15,16 @@ export default {
       },
       boxShadow: { soft: "0 14px 40px rgba(0,0,0,.12)" },
       keyframes: {
-        rise: { "0%": { opacity: 0, transform: "translateY(7px)" }, "100%": { opacity: 1, transform: "translateY(0)" } },
+        rise: {
+          "0%": { opacity: 0, transform: "translateY(7px)" },
+          "100%": { opacity: 1, transform: "translateY(0)" },
+        },
         shimmer: { "100%": { transform: "translateX(100%)" } },
       },
-      animation: { rise: "rise .22s ease-out both", shimmer: "shimmer 1.6s infinite" },
+      animation: {
+        rise: "rise .22s ease-out both",
+        shimmer: "shimmer 1.6s infinite",
+      },
     },
   },
   plugins: [],

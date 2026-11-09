@@ -10,6 +10,31 @@ from app import Store, ensure_thumbnail, ImagePromptWorker
 
 
 class ImageLibraryTests(unittest.TestCase):
+    def test_relative_attachment_cannot_resolve_from_another_working_directory(self):
+        import os
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as other:
+            outside=Path(other)/'unrelated.png';outside.write_bytes(b'outside this data profile')
+            previous=Path.cwd()
+            try:
+                os.chdir(other)
+                with patch.object(offline_app,'DATA_DIR',self.root):resolved=offline_app._resolve_attachment_path('unrelated.png')
+            finally:os.chdir(previous)
+            self.assertEqual(Path(resolved),self.root/'unrelated.png')
+            self.assertNotEqual(Path(resolved),outside)
+
+    def test_relative_alias_resolves_in_data_profile_without_cwd_leak(self):
+        from unittest.mock import patch
+        folder=self.root/'generated';folder.mkdir(exist_ok=True)
+        path=folder/'profile-specific.png';Image.new('RGB',(20,20),'red').save(path)
+        original=self.store.index_library_image(path,user_prompt='Actual profile image')
+        self.store.con.execute("INSERT INTO library_images(id,path,created,deleted) VALUES('relative-alias','generated/profile-specific.png',1,0)");self.store.con.commit()
+        with patch.object(offline_app,'DATA_DIR',self.root):
+            images=self.store.get_library_images()
+        self.assertEqual(len(images),1)
+        self.assertEqual(set(images[0]['aliasIds']),{original,'relative-alias'})
+        self.assertEqual(Path(images[0]['path']),path)
+
     def test_version_family_keeps_missing_parent_as_explicit_placeholder(self):
         from types import SimpleNamespace
         parent=self.root/'parent.png';child=self.root/'child.png'

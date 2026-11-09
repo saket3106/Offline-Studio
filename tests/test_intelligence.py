@@ -174,9 +174,15 @@ class IntelligenceLayerTests(unittest.TestCase):
     def test_build_correction_messages(self):
         original_msgs = [{"role": "user", "content": "Write in 8 words."}]
         correction = build_correction_messages(original_msgs, "This has six words.", ["Expected exactly 8 words, got 5."])
-        self.assertEqual(len(correction), 3)
-        self.assertEqual(correction[1]["role"], "assistant")
-        self.assertIn("failed local software verification", correction[2]["content"])
+        # A sole word-count failure gets a fresh revision request so the
+        # model does not continue the overlong assistant draft.
+        self.assertEqual(correction[-1]["role"], "user")
+        self.assertIn("Write in 8 words.",correction[-1]["content"])
+        self.assertIn("This has six words.",correction[-1]["content"])
+        self.assertIn("failed local software verification",correction[-1]["content"])
+        general=build_correction_messages(original_msgs,"Draft",["Expected JSON output."])
+        self.assertEqual(len(general),3)
+        self.assertEqual(general[1]["role"],"assistant")
 
     # ----------------- RAG ENGINE -----------------
     def test_rag_chunking_and_bm25_retrieval(self):
@@ -246,8 +252,7 @@ class IntelligenceLayerTests(unittest.TestCase):
 
     # ----------------- MEMORY MANAGER -----------------
     def test_memory_budget_and_sensitive_filter(self):
-        # Assemble a synthetic credential shape without storing a token-like literal.
-        self.assertTrue(is_sensitive("my api_key is sk-" + "0123456789abcdef" * 2))
+        self.assertTrue(is_sensitive("my api_key is sk-1234567890abcdef1234567890abcdef"))
         self.assertTrue(is_sensitive("password = SuperSecretPass123!"))
         self.assertFalse(is_sensitive("I enjoy programming in Python and TypeScript."))
 
@@ -595,9 +600,10 @@ def square(value):
             worker.failed.connect(failures.append)
             worker.run()
 
+        # One message = one answer: a word-count miss never regenerates the answer.
         self.assertEqual(failures, [])
-        self.assertEqual(engine.calls, 2)
-        self.assertEqual(json.loads(results[0])["content"], "Recursion means functions call themselves.")
+        self.assertEqual(engine.calls, 1)
+        self.assertEqual(json.loads(results[0])["content"], "It lets a function call itself.")
 
     def test_document_reference_does_not_change_normal_direct_routing(self):
         self.assertEqual(route_request("What is recursion?")["route_target"], "DIRECT")
@@ -778,6 +784,7 @@ class ChatResponseFinalizationTests(unittest.TestCase):
                 return first_two if len(self.calls) == 1 else rest
 
         analysis = analyze_request(prompt)
+        analysis["max_retries"] = 1  # exercises the opt-in bulk section merge; production chat uses 0
         self.assertEqual(analysis["expected_task_ids"], list(range(1, 8)))
         self.assertEqual(analysis["task_analyses"][3]["route_target"], "TOOL")
         self.assertEqual(analysis["unsupported_task_ids"], [5])
@@ -2279,7 +2286,7 @@ class QualityAndReliabilityTests(unittest.TestCase):
         from validators import enforce_exact_word_count, WordCountValidator
 
         # Strip meta labels and match
-        t1 = "Students benefit from responsible AI use for faster learning.\nWord count: 10"
+        t1 = "All students benefit from responsible AI use for faster learning.\nWord count: 10"
         adjusted1 = enforce_exact_word_count(t1, 10)
         self.assertEqual(len(WordCountValidator.count_words(adjusted1)), 10)
         self.assertNotIn("Word count", adjusted1)

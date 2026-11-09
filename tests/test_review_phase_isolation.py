@@ -40,8 +40,10 @@ class ReviewPhaseIsolationTests(unittest.TestCase):
 
     def test_truncated_recovery_does_not_downgrade_reviewer(self):
         requests,_=self.run_worker('truncated')
-        self.assertEqual([kwargs['reasoning_effort'] for _,kwargs in requests],['high','low','medium'])
-        self.assertNotIn('previous draft hit the native output limit',requests[2][0][0]['content'])
+        # One message = one answer: a truncated hidden draft is trimmed, never
+        # regenerated; the reviewer keeps its own (medium) effort.
+        self.assertEqual([kwargs['reasoning_effort'] for _,kwargs in requests],['high','medium'])
+        self.assertNotIn('previous draft hit the native output limit',requests[1][0][0]['content'])
 
     def test_normal_reviewer_does_not_add_unnecessary_recovery(self):
         requests,_=self.run_worker('normal')

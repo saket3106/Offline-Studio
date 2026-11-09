@@ -1,8 +1,22 @@
-import React,{useState,useEffect,useRef} from 'react';
-
+import {SelectField} from "./controls.jsx";
+import React,{useState,useEffect,useRef,useMemo} from 'react';
 import ReactMarkdown from 'react-markdown';
-
 import remarkGfm from 'remark-gfm';
+import {
+  Folder,
+  Plus,
+  Search,
+  MessageSquare,
+  FileText,
+  Image as ImageIcon,
+  Check,
+  CheckCircle2,
+  Clock,
+  Calendar,
+  ChevronRight,
+  Save,
+  Layers
+} from 'lucide-react';
 
 const parse=(v,f={})=>{try{return JSON.parse(v)}catch{return f}};
 
@@ -52,6 +66,8 @@ export function DocumentWorkspace({bridge,onPrompt,onAttach}){
 
   const job=useJob(bridge);
 
+  const visibleDocuments=useMemo(()=>library.documents.filter(d=>(!collection||d.collections.includes(collection))&&d.name.toLowerCase().includes(filter.toLowerCase())),[library.documents,collection,filter]);
+
   const reload=async()=>{const r=await job.run('documents',{});if(r)setLibrary(r.value)};
 
   const index=async paths=>{if(!paths?.length)return;const r=await job.run('index',{paths,collectionId:collection});if(r)reload()};
@@ -62,25 +78,25 @@ export function DocumentWorkspace({bridge,onPrompt,onAttach}){
 
   const add=async()=>{const files=parse(await call(bridge,'pickAttachment','document'),[]);index(Array.isArray(files)?files.map(f=>typeof f==='string'?f:f.path):files.path?[files.path]:[])};
 
-  return <section className="workspace-view local-workspace"><div className="workspace-heading"><div className="eyebrow">LOCAL WORKSPACE</div><h1>Documents & code</h1><p>Keep source files in place. Search indexed evidence or ask GPT-OSS to explain it.</p></div>
+  return <section className="workspace-view local-workspace"><div className="workspace-heading sr-only"><h1>Documents</h1></div>
 
     <div className="workspace-toolbar"><button aria-pressed={tab==='documents'} onClick={()=>setTab('documents')}>Document Library</button><button aria-pressed={tab==='code'} onClick={()=>setTab('code')}>Code tools</button></div>
 
-    {tab==='code'?<CodeWorkspace bridge={bridge}/>:<>
+    {tab==='code'?<CodeWorkspace bridge={bridge}/>:<div className="knowledge-workbench"><aside className="knowledge-source-rail">
 
-    <div className="workspace-toolbar"><button disabled={!!job.running} onClick={add}>Add files</button><select aria-label="Document collection" value={collection} onChange={e=>{setCollection(e.target.value);setSource('')}}><option value="">All documents</option>{library.collections.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><input aria-label="New collection name" value={name} onChange={e=>setName(e.target.value)} placeholder="New collection"/><button disabled={!name.trim()||!!job.running} onClick={async()=>{const r=await job.run('collection',{name});if(r){setCollection(r.value.id);setName('');reload()}}}>Create collection</button><button onClick={reload} disabled={!!job.running}>Refresh</button></div>
+    <div className="workspace-toolbar"><button disabled={!!job.running} onClick={add}>Add files</button><SelectField aria-label="Document collection" value={collection} onChange={e=>{setCollection(e.target.value);setSource('')}}><option value="">All documents</option>{library.collections.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</SelectField><input aria-label="New collection name" value={name} onChange={e=>setName(e.target.value)} placeholder="New collection"/><button disabled={!name.trim()||!!job.running} onClick={async()=>{const r=await job.run('collection',{name});if(r){setCollection(r.value.id);setName('');reload()}}}>Create collection</button><button onClick={reload} disabled={!!job.running}>Refresh</button></div>
 
     <input className="workspace-input" aria-label="Filter documents" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter documents by filename…"/>
 
-    <div className="document-list">{library.documents.filter(d=>(!collection||d.collections.includes(collection))&&d.name.toLowerCase().includes(filter.toLowerCase())).map(d=><article className="document-row" key={d.id}><div><strong>{d.name}</strong><small>{d.missing?'Source missing':d.metadata.pages?`${d.metadata.pages} physical PDF pages`:d.metadata.slides?`${d.metadata.slides} slides`:'Text source'} · {d.metadata.extraction}</small></div><button onClick={()=>call(bridge,'openDocumentSource',d.id,0)}>Open source</button><button disabled={!!job.running||d.missing} onClick={()=>index([d.path])}>Reindex / assign</button><button disabled={!!job.running} onClick={async()=>{await job.run('remove',{documentId:d.id});reload()}}>Remove index</button></article>)}{!library.documents.length&&<p className="workspace-note">Add or drop PDF, TXT, Markdown, DOCX or PPTX files. Scanned pages need OCR; selectable text is indexed locally.</p>}</div>
+    <div className="document-list" aria-label="Indexed documents">{visibleDocuments.map(d=><article className="document-row" key={d.id}><div><strong>{d.name}</strong><small>{d.missing?'Source missing':d.metadata.pages?`${d.metadata.pages} physical PDF pages`:d.metadata.slides?`${d.metadata.slides} slides`:'Text source'} · {d.metadata.extraction}</small></div><button onClick={()=>call(bridge,'openDocumentSource',d.id,0)}>Open source</button><button disabled={!!job.running||d.missing} onClick={()=>index([d.path])}>Reindex / assign</button><button disabled={!!job.running} onClick={async()=>{await job.run('remove',{documentId:d.id});reload()}}>Remove index</button></article>)}{!visibleDocuments.length&&<div className="document-empty"><strong>{library.documents.length?"No matching sources":"No documents yet"}</strong><p className="workspace-note">{library.documents.length?"Try another filename or collection. Your indexed files are unchanged.":"Add or drop PDF, TXT, Markdown, DOCX or PPTX files. Selectable text is indexed locally; scanned pages need OCR."}</p></div>}</div>
 
-    <form className="workspace-query" onSubmit={async e=>{e.preventDefault();setResult(null);const r=await job.run(exact?'search':'question',{query,exact,semantic,collectionId:collection,documentId:source});if(r)setResult({...r.value,durationMs:r.durationMs})}}><select aria-label="Source filter" value={source} onChange={e=>setSource(e.target.value)}><option value="">All sources in collection</option>{library.documents.filter(d=>!collection||d.collections.includes(collection)).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select><textarea value={query} onChange={e=>setQuery(e.target.value)} placeholder="Ask a question, compare sources, or enter an exact phrase…" aria-label="Document question"/><label><input type="checkbox" checked={exact} onChange={e=>setExact(e.target.checked)}/> Exact phrase · deterministic literal search</label>{!exact&&<label><input type="checkbox" checked={semantic} onChange={e=>setSemantic(e.target.checked)}/> Semantic query expansion · extra local model call</label>}<button disabled={!!job.running||!query.trim()}>{exact?'Search phrase':'Ask with evidence'}</button><button type="button" disabled={!!job.running||!library.documents.length} onClick={async()=>{setResult(null);const r=await job.run('question',{query:query||'Summarize these sources and their limitations.',summary:true,collectionId:collection,documentId:source});if(r)setResult({...r.value,durationMs:r.durationMs})}}>Summarize selected sources</button></form>
+    </aside><div className="knowledge-reading-pane"><form className="workspace-query" onSubmit={async e=>{e.preventDefault();setResult(null);const r=await job.run(exact?'search':'question',{query,exact,semantic,collectionId:collection,documentId:source});if(r)setResult({...r.value,durationMs:r.durationMs})}}><SelectField aria-label="Source filter" value={source} onChange={e=>setSource(e.target.value)}><option value="">All sources in collection</option>{library.documents.filter(d=>!collection||d.collections.includes(collection)).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</SelectField><textarea value={query} onChange={e=>setQuery(e.target.value)} placeholder="Ask a question, compare sources, or enter an exact phrase…" aria-label="Document question"/><label><input type="checkbox" checked={exact} onChange={e=>setExact(e.target.checked)}/> Exact phrase</label>{!exact&&<details className="query-options"><summary>Search options</summary><label><input type="checkbox" checked={semantic} onChange={e=>setSemantic(e.target.checked)}/> Semantic query expansion · extra local model call</label></details>}<button disabled={!!job.running||!query.trim()}>{exact?'Search phrase':'Ask with evidence'}</button><button type="button" disabled={!!job.running||!library.documents.length} onClick={async()=>{setResult(null);const r=await job.run('question',{query:query||'Summarize these sources and their limitations.',summary:true,collectionId:collection,documentId:source});if(r)setResult({...r.value,durationMs:r.durationMs})}}>Summarize selected sources</button></form>
 
     {job.running&&<p role="status">Working locally… <button onClick={job.stop}>Stop</button></p>}{job.error&&<p role="alert">{job.error}</p>}
 
     {result&&<section className="workspace-answer" aria-label="Document answer"><small>{result.status} · {result.retrieval} · {(result.durationMs/1000).toFixed(2)} s</small>{result.coverage&&<p>{result.coverage.indexedPagesOrSections} indexed pages/sections · {result.modelCalls} local model calls · {result.coverage.scope}</p>}{result.answer&&<ReactMarkdown remarkPlugins={[remarkGfm]}>{result.answer}</ReactMarkdown>}{result.sourceCaveats?.length>0&&<details open><summary>Source caveats · verbatim excerpts</summary>{result.sourceCaveats.map((c,i)=><blockquote key={i}>[{c.citation}] {c.text}</blockquote>)}</details>}{result.status==='NO_DOCUMENT'&&<p>No indexed source is available in this selection.</p>}{result.matches.map((m,i)=><details key={m.chunkId}><summary><button onClick={e=>{e.preventDefault();call(bridge,'openDocumentSource',m.documentId,m.page||0)}}>[{i+1}] {m.filename}{m.page?` · physical page ${m.page}`:m.section?` · ${m.section}`:''}</button></summary><p>{m.snippet}</p><small>{m.chunkId} · offsets {m.start}–{m.end}</small></details>)}</section>}
 
-    <div className="workspace-toolbar"><button onClick={()=>onPrompt('Create a PDF about ')}>Create PDF</button><button onClick={()=>onPrompt('Create a Word document about ')}>Create Word document</button><button onClick={()=>onPrompt('Create a PowerPoint presentation about ')}>Create slides</button><button onClick={onAttach}>Attach for focused editing</button></div></>}
+    <div className="workspace-toolbar"><button onClick={()=>onPrompt('Create a PDF about ')}>Create PDF</button><button onClick={()=>onPrompt('Create a Word document about ')}>Create Word document</button><button onClick={()=>onPrompt('Create a PowerPoint presentation about ')}>Create slides</button><button onClick={onAttach}>Attach for focused editing</button></div></div></div>}
 
   </section>
 
@@ -96,7 +112,7 @@ export function CodeWorkspace({bridge}){
 
   const browse=async(folder)=>{const r=parse(await call(bridge,'choosePath',folder?'directory':'file'));if(r.path)setProject(r.path)};
 
-  return <div className="code-workspace"><h2>Python checks</h2><p>Static validation never runs your program. Optional bounded checks support a small pure Python subset with instruction, value and output limits. Imports, files and network are unavailable.</p><select aria-label="Code kind" value={kind} onChange={e=>setKind(e.target.value)}><option value="executable">Executable Python</option><option value="illustrative">Illustrative snippet</option><option value="pseudocode">Pseudocode</option></select><textarea className="workspace-code" aria-label="Python source" value={code} onChange={e=>setCode(e.target.value)} spellCheck={false} placeholder="Paste Python code…"/><div className="workspace-toolbar"><button disabled={!!job.running||!code.trim()} onClick={async()=>{const r=await job.run('codeCheck',{code,kind});if(r)setResult(r.value)}}>Check syntax & names</button><button disabled={!!job.running||!code.trim()||kind==='pseudocode'} onClick={async()=>{const r=await job.run('codeCheck',{code,kind,execute:true});if(r)setResult(r.value)}}>Run bounded checks…</button></div>{result&&<div role="status"><strong>{result.valid===true?'Syntax passed':result.valid===false?'Syntax failed':'Pseudocode'}</strong><p>{result.error||result.limitation}</p>{result.warnings?.map(w=><p key={w}>{w}</p>)}{result.boundedCheck&&<pre>{result.boundedCheck.stdout||result.boundedCheck.error_message}</pre>}<small>{result.executed?'Restricted AST evaluation performed.':'Not executed.'}</small></div>}
+  return <div className="code-workspace"><h2>Python checks</h2><p>Static validation never runs your program. Optional bounded checks support a small pure Python subset with instruction, value and output limits. Imports, files and network are unavailable.</p><SelectField aria-label="Code kind" value={kind} onChange={e=>setKind(e.target.value)}><option value="executable">Executable Python</option><option value="illustrative">Illustrative snippet</option><option value="pseudocode">Pseudocode</option></SelectField><textarea className="workspace-code" aria-label="Python source" value={code} onChange={e=>setCode(e.target.value)} spellCheck={false} placeholder="Paste Python code…"/><div className="workspace-toolbar"><button disabled={!!job.running||!code.trim()} onClick={async()=>{const r=await job.run('codeCheck',{code,kind});if(r)setResult(r.value)}}>Check syntax & names</button><button disabled={!!job.running||!code.trim()||kind==='pseudocode'} onClick={async()=>{const r=await job.run('codeCheck',{code,kind,execute:true});if(r)setResult(r.value)}}>Run bounded checks…</button></div>{result&&<div role="status"><strong>{result.valid===true?'Syntax passed':result.valid===false?'Syntax failed':'Pseudocode'}</strong><p>{result.error||result.limitation}</p>{result.warnings?.map(w=><p key={w}>{w}</p>)}{result.boundedCheck&&<pre>{result.boundedCheck.stdout||result.boundedCheck.error_message}</pre>}<small>{result.executed?'Restricted AST evaluation performed.':'Not executed.'}</small></div>}
 
   <h2>Project inspection</h2><div className="workspace-toolbar"><button onClick={()=>browse(true)}>Choose folder</button><button onClick={()=>browse(false)}>Choose ZIP</button><input aria-label="Project path" value={project} onChange={e=>setProject(e.target.value)} placeholder="Project folder or ZIP path"/><input aria-label="Code search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search source text"/><button disabled={!!job.running||!project} onClick={async()=>{const r=await job.run('project',{path:project,query});if(r)setOverview(r.value)}}>Inspect</button></div>{overview&&<div className="project-files">{overview.files.map(f=><details key={f.name}><summary>{f.name} · {f.bytes} bytes</summary>{f.symbols.map(s=><p key={s.line+':'+s.name}>{s.kind} {s.name} · line {s.line}</p>)}{f.matches.map(m=><pre key={m.line}>{m.line}: {m.text}</pre>)}</details>)}</div>}
 
@@ -126,7 +142,7 @@ export function LocalImageTools({bridge,image,onUpdated,onVariationStarted}){
 
   const variation=async mode=>{const r=parse(await call(bridge,'imageVariation',image.id,prompt,mode));setVariationError(r.ok?'':r.error||'Variation could not start.');if(r.ok)onVariationStarted?.();};
 
-  return <details className="local-image-tools" open={image.recolorOptions?true:undefined}><summary>Versions & local image tools</summary><small>Native: {image.nativeDimensions||'unavailable'} · Saved: {image.finalDimensions||'unavailable'} · Parent: {image.parentId||'unavailable'}</small><textarea aria-label="Variation prompt" value={prompt} onChange={e=>setPrompt(e.target.value)}/><div className="workspace-toolbar"><button disabled={!prompt||!!job.running} onClick={()=>variation('new')}>New-seed variation</button><button disabled={!prompt||image.seed==null||image.seed===''||!!job.running} onClick={()=>variation('same')}>Reuse seed & settings</button><button disabled={!prompt||!!job.running} onClick={()=>variation('reference')}>Generative AI Edit</button></div>{variationError&&<p role="alert">{variationError}</p>}<p>Same-seed results depend on runtime, hardware and recorded settings. Reference editing uses the installed FLUX backend.</p><select aria-label="Local image operation" value={operation} onChange={e=>setOperation(e.target.value)}>{['crop','resize','rotate','convert','recolor'].map(o=><option key={o} value={o}>{o==='recolor'?'Fast Recolor · paint a mask':o}</option>)}</select>{operation==='recolor'&&<RecolorMask image={image} options={options} onChange={setOptions} onReady={setMaskReady} disabled={!!job.running}/>}<div className="workspace-toolbar">{(operation==='resize'?['width','height']:operation==='crop'?['left','top','right','bottom']:operation==='rotate'?['angle']:[]).map(k=><label key={k}>{k}<input type="number" value={options[k]} onChange={e=>setOptions({...options,[k]:Number(e.target.value)})}/></label>)}<label>Format<select disabled={operation==='recolor'} value={operation==='recolor'?'png':options.format} onChange={e=>setOptions({...options,format:e.target.value})}><option>png</option><option>jpg</option><option>webp</option></select></label><button disabled={!!job.running||(operation==='recolor'&&(!maskReady||(!options.strokes?.length&&!options.mask_path)))} onClick={async()=>{const r=await job.run('imageEdit',{path:image.path,parentId:image.id,operation,options:{...options,format:operation==='recolor'?'png':options.format}});if(r){setResult(r.value);onUpdated?.()}}}>Save new version</button></div>{job.error&&<p role="alert">{job.error}</p>}{job.running&&<p role="status">Processing locally… <button onClick={job.stop}>Stop</button></p>}{result&&<><div className="image-compare"><figure><img src={fileUrl(image.path)} alt="Original"/><figcaption>Original · preserved</figcaption></figure><figure><img src={fileUrl(result.path)} alt="Edited version"/><figcaption>{result.method||result.operation} · {result.dimensions}</figcaption></figure></div>{result.metrics&&<small>Mask: {result.metrics.maskMs} ms · Recolor: {result.metrics.recolorMs} ms · Save: {result.metrics.saveMs} ms · No model calls</small>}<button onClick={()=>bridge?.saveImage?.(result.path)}>Save As…</button></>}</details>
+  return <details className="local-image-tools" open={image.recolorOptions?true:undefined}><summary>Versions & local image tools</summary><small>Native: {image.nativeDimensions||'unavailable'} · Saved: {image.finalDimensions||'unavailable'} · Parent: {image.parentId||'unavailable'}</small><textarea aria-label="Variation prompt" value={prompt} onChange={e=>setPrompt(e.target.value)}/><div className="workspace-toolbar"><button disabled={!prompt||!!job.running} onClick={()=>variation('new')}>New-seed variation</button><button disabled={!prompt||image.seed==null||image.seed===''||!!job.running} onClick={()=>variation('same')}>Reuse seed & settings</button><button disabled={!prompt||!!job.running} onClick={()=>variation('reference')}>Generative AI Edit</button></div>{variationError&&<p role="alert">{variationError}</p>}<p>Same-seed results depend on runtime, hardware and recorded settings. Reference editing uses the installed FLUX backend.</p><SelectField aria-label="Local image operation" value={operation} onChange={e=>setOperation(e.target.value)}>{['crop','resize','rotate','convert','recolor'].map(o=><option key={o} value={o}>{o==='recolor'?'Fast Recolor · paint a mask':o}</option>)}</SelectField>{operation==='recolor'&&<RecolorMask image={image} options={options} onChange={setOptions} onReady={setMaskReady} disabled={!!job.running}/>}<div className="workspace-toolbar">{(operation==='resize'?['width','height']:operation==='crop'?['left','top','right','bottom']:operation==='rotate'?['angle']:[]).map(k=><label key={k}>{k}<input type="number" value={options[k]} onChange={e=>setOptions({...options,[k]:Number(e.target.value)})}/></label>)}<label>Format<SelectField disabled={operation==='recolor'} value={operation==='recolor'?'png':options.format} onChange={e=>setOptions({...options,format:e.target.value})}><option>png</option><option>jpg</option><option>webp</option></SelectField></label><button disabled={!!job.running||(operation==='recolor'&&(!maskReady||(!options.strokes?.length&&!options.mask_path)))} onClick={async()=>{const r=await job.run('imageEdit',{path:image.path,parentId:image.id,operation,options:{...options,format:operation==='recolor'?'png':options.format}});if(r){setResult(r.value);onUpdated?.()}}}>Save new version</button></div>{job.error&&<p role="alert">{job.error}</p>}{job.running&&<p role="status">Processing locally… <button onClick={job.stop}>Stop</button></p>}{result&&<><div className="image-compare"><figure><img src={fileUrl(image.path)} alt="Original"/><figcaption>Original · preserved</figcaption></figure><figure><img src={fileUrl(result.path)} alt="Edited version"/><figcaption>{result.method||result.operation} · {result.dimensions}</figcaption></figure></div>{result.metrics&&<small>Mask: {result.metrics.maskMs} ms · Recolor: {result.metrics.recolorMs} ms · Save: {result.metrics.saveMs} ms · No model calls</small>}<button onClick={()=>bridge?.saveImage?.(result.path)}>Save As…</button></>}</details>
 
 }
 
@@ -155,7 +171,7 @@ export function MemoryControls({bridge,onSource}) {
   const refresh=async()=>{const r=await run('memoryStatus');if(r)setStatus(r)};
   useEffect(()=>{refresh()},[bridge]);
   const search=async(offset=0)=>{const r=await run('memorySearch',{query,offset,limit:12,timeline:false});if(r)setResult(r)};
-  return <div className="memory-controls local-workspace"><h3>Conversation memory</h3><p>Local search with source dates. Only conversations saved in OfflineGPT are available; external Codex chats need an explicit local import.</p>
+  return <div className="memory-controls local-workspace"><h3>Conversation memory</h3><p>Local search with source dates. Only conversations saved in Offline Studio are available; external Codex chats need an explicit local import.</p>
     <label><input type="checkbox" checked={status?.enabled??false} disabled={!status||busy} onChange={async e=>{const r=await run('memoryEnable',{enabled:e.target.checked});if(r)setStatus(r)}}/> Enable local long-term recall</label>
     <button disabled={busy} onClick={async()=>{const path=await call(bridge,"pickMemoryImportFile");if(path){await run("memoryImport",{path});await refresh()}}}>Import local chat export or project record</button><p>{status?.indexedMessages??0} indexed messages · {status?.pendingChats??0} chats awaiting incremental indexing</p>
     <form className="workspace-toolbar" onSubmit={e=>{e.preventDefault();if(!busy)search()}}><input aria-label="Search past conversations" placeholder="Search decisions, timings or prior discussions" value={query} onChange={e=>setQuery(e.target.value)}/><button disabled={busy||!query.trim()}>Search</button><button type="button" disabled={busy} onClick={async()=>{await run('memoryRebuild');await refresh()}}>Rebuild index</button><button type="button" disabled={busy||!query.trim()} onClick={async()=>{const r=await run('memoryExport',{query});if(r)bridge?.revealFile?.(r.path)}}>Export results</button></form>
@@ -167,15 +183,582 @@ export function MemoryControls({bridge,onSource}) {
 }
 function EpisodeEditor({episode,run,onHidden}){const [text,setText]=useState(episode.summary),[saved,setSaved]=useState(false);return <article className="model-placement-note"><small>{episode.id} · {episode.corrected?'user-corrected':'extractive'}</small><textarea aria-label="Episodic summary" value={text} onChange={e=>setText(e.target.value)}/><div className="workspace-toolbar"><button onClick={async()=>{const r=await run('memoryCorrect',{id:episode.id,summary:text});if(r)setSaved(true)}}>{saved?'Correction saved':'Save correction'}</button><button onClick={async()=>{if(window.confirm('Hide this derived summary? Its source conversation stays intact.')){const r=await run('memoryCorrect',{id:episode.id,hide:true});if(r)onHidden()}}}>Hide summary</button></div></article>}
 
-export function ProjectWorkspace({bridge,chatId,onSelectChat}){
-  const [projects,setProjects]=useState([]),[selected,setSelected]=useState(''),[details,setDetails]=useState(null),[name,setName]=useState(''),[instructions,setInstructions]=useState(''),[note,setNote]=useState(''),[noteState,setNoteState]=useState('NOTE'),[reminders,setReminders]=useState([]),[reminderTitle,setReminderTitle]=useState(''),[due,setDue]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
-  const run=async(action,args={})=>{setError('');setBusy(true);try{return(await workspaceCall(bridge,action,args)).value}catch(e){setError(e.message);return null}finally{setBusy(false)}};
-  const refresh=async()=>{const r=await run('projectsList');if(r)setProjects(r);const rem=await run('remindersList');if(rem)setReminders(rem)};
-  useEffect(()=>{refresh()},[bridge]);useEffect(()=>{let current=true;if(selected)run('projectDetails',{id:selected}).then(r=>r&&current&&setDetails(r));else setDetails(null);return()=>{current=false}},[selected]);
-  return <section className="document-workspace workspace-view local-workspace"><div className="workspace-heading"><h1>Projects</h1><p>Group existing chats, their documents and images, notes and instructions locally.</p></div>{error&&<p role="alert">{error}</p>}
-    <div className="workspace-toolbar"><select aria-label="Current project" value={selected} onChange={e=>{const id=e.target.value;setSelected(id);const p=projects.find(p=>p.id===id);setName(p?.name||'');setInstructions(p?.instructions||'')}}><option value="">New project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} ({p.chatCount} chats)</option>)}</select><input aria-label="Project name" placeholder="Project name" value={name} onChange={e=>setName(e.target.value)}/><button disabled={busy||!name.trim()} onClick={async()=>{const r=await run('projectSave',{id:selected,name,instructions});if(r){await refresh();setSelected(r.id)}}}>Save project</button><button disabled={busy||!selected||!chatId} onClick={async()=>{await run('projectAssign',{chatId,projectId:selected});setDetails(await run('projectDetails',{id:selected}));await refresh()}}>Add current chat</button></div>
-    <label>Project instructions<textarea aria-label="Project instructions" value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="Preferences for this project. Application security and permissions still apply."/></label>
-    {details&&<><h3>Conversations</h3><div className="workspace-toolbar">{details.chats.map(c=><button key={c.id} onClick={()=>onSelectChat?.(c.id)}>{c.title}</button>)}</div><h3>Documents and images</h3><div className="workspace-toolbar">{details.documents.map(path=><button key={path} onClick={()=>bridge?.openFile?.(path)}>{path.split(/[\\/]/).at(-1)}</button>)}{details.images.map(image=><button key={image.id} onClick={()=>bridge?.openImage?.(image.path)}>{image.path.split(/[\\/]/).at(-1)}</button>)}</div><h3>Notes and outstanding work</h3>{details.notes.map(n=><article className="model-placement-note" key={n.id}><strong>{n.title}</strong><small>{n.state} · user note, not runtime verification</small><p>{n.body}</p></article>)}<textarea aria-label="Project note" value={note} onChange={e=>setNote(e.target.value)} placeholder="Add a note, decision, or outstanding task"/><div className="workspace-toolbar"><select aria-label="Note status" value={noteState} onChange={e=>setNoteState(e.target.value)}>{['NOTE','REQUESTED','IMPLEMENTED_ACCORDING_TO_REPORT','USER_TESTED','VERIFIED','PARTIAL','UNRESOLVED'].map(x=><option key={x}>{x}</option>)}</select><button disabled={busy||!note.trim()} onClick={async()=>{await run('projectNote',{projectId:selected,title:note.slice(0,100),body:note,state:noteState});setNote('');setDetails(await run('projectDetails',{id:selected}))}}>Save note</button></div></>}
-    <details><summary>Local reminders</summary><p>OfflineGPT must be running. Overdue reminders appear after restart. Reminders only notify; they never run scripts or commands.</p><div className="workspace-toolbar"><input aria-label="Reminder title" value={reminderTitle} onChange={e=>setReminderTitle(e.target.value)} placeholder="Reminder"/><input aria-label="Reminder time" type="datetime-local" value={due} onChange={e=>setDue(e.target.value)}/><button disabled={busy||!reminderTitle||!due} onClick={async()=>{await run('reminderCreate',{title:reminderTitle,due:new Date(due).getTime()/1000});setReminderTitle('');await refresh()}}>Set reminder</button></div>{reminders.map(r=><p key={r.id}>{r.title} · {new Date(r.due*1000).toLocaleString()} <button onClick={async()=>{await run('reminderDismiss',{id:r.id});await refresh()}}>Dismiss</button></p>)}</details>
-  </section>
+export function ProjectWorkspace({bridge, chatId, onSelectChat}) {
+  const [projects, setProjects] = useState([]);
+  const [selected, setSelected] = useState('');
+  const [details, setDetails] = useState(null);
+  const [name, setName] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [note, setNote] = useState('');
+  const [noteState, setNoteState] = useState('NOTE');
+  const [reminders, setReminders] = useState([]);
+  const [reminderTitle, setReminderTitle] = useState('');
+  const [due, setDue] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('conversations');
+  const [savedFeedback, setSavedFeedback] = useState('');
+
+  const run = async (action, args = {}) => {
+    setError('');
+    setBusy(true);
+    try {
+      return (await workspaceCall(bridge, action, args)).value;
+    } catch (e) {
+      setError(e.message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refresh = async () => {
+    const r = await run('projectsList');
+    if (r) setProjects(r);
+    const rem = await run('remindersList');
+    if (rem) setReminders(rem);
+  };
+
+  useEffect(() => {
+    refresh();
+  }, [bridge]);
+
+  useEffect(() => {
+    let current = true;
+    if (selected) {
+      run('projectDetails', { id: selected }).then(r => r && current && setDetails(r));
+    } else {
+      setDetails(null);
+    }
+    return () => {
+      current = false;
+    };
+  }, [selected]);
+
+  const selectProject = (p) => {
+    setSelected(p.id);
+    setName(p.name || '');
+    setInstructions(p.instructions || '');
+    setSavedFeedback('');
+  };
+
+  const startNewProject = () => {
+    setSelected('');
+    setName('New Project');
+    setInstructions('');
+    setDetails(null);
+    setSavedFeedback('');
+  };
+
+  const handleSaveProject = async () => {
+    if (!name.trim()) return;
+    const r = await run('projectSave', { id: selected, name, instructions });
+    if (r) {
+      setSavedFeedback('Saved');
+      setTimeout(() => setSavedFeedback(''), 2500);
+      await refresh();
+      setSelected(r.id);
+    }
+  };
+
+  const handleAssignChat = async () => {
+    if (!selected || !chatId) return;
+    await run('projectAssign', { chatId, projectId: selected });
+    setDetails(await run('projectDetails', { id: selected }));
+    await refresh();
+  };
+
+  const handleAddNote = async () => {
+    if (!note.trim() || !selected) return;
+    await run('projectNote', {
+      projectId: selected,
+      title: note.slice(0, 100),
+      body: note,
+      state: noteState
+    });
+    setNote('');
+    setDetails(await run('projectDetails', { id: selected }));
+  };
+
+  const handleAttachFile = async () => {
+    const files = parse(await call(bridge, 'pickAttachment', 'document'), []);
+    const pathList = Array.isArray(files)
+      ? files.map(f => typeof f === 'string' ? f : f.path)
+      : files?.path ? [files.path] : [];
+    if (pathList.length && selected) {
+      for (const p of pathList) {
+        if (p) await run('projectAttach', { projectId: selected, path: p }).catch(() => {});
+      }
+      setDetails(await run('projectDetails', { id: selected }));
+    }
+  };
+
+  const filteredProjects = useMemo(() => {
+    if (!searchQuery.trim()) return projects;
+    const q = searchQuery.toLowerCase();
+    return projects.filter(p => (p.name || '').toLowerCase().includes(q));
+  }, [projects, searchQuery]);
+
+  return (
+    <section className="document-workspace workspace-view local-workspace project-workspace">
+      <div className="workspace-heading sr-only"><h1>Projects</h1></div>
+      {error && <p className="workspace-error-banner" role="alert">{error}</p>}
+
+      <div className="project-workbench">
+        {/* Left Rail: Project Catalog & Setup */}
+        <aside className="project-setup" aria-label="Projects catalog">
+          <div className="project-rail-header">
+            <span className="project-rail-title"><Folder size={16}/> Projects</span>
+            <button
+              type="button"
+              className="secondary-button project-new-btn"
+              disabled={busy}
+              onClick={startNewProject}
+              title="Create a new workspace project"
+            >
+              <Plus size={14}/> New
+            </button>
+          </div>
+
+          <div className="project-search-bar">
+            <Search size={14} className="project-search-icon"/>
+            <input
+              className="project-search-input"
+              aria-label="Search projects"
+              placeholder="Search projects…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          {/* Legacy fallback select kept hidden for compatibility */}
+          <div className="sr-only">
+            <SelectField
+              aria-label="Current project"
+              value={selected}
+              onChange={e => {
+                const id = e.target.value;
+                setSelected(id);
+                const p = projects.find(x => x.id === id);
+                setName(p?.name || '');
+                setInstructions(p?.instructions || '');
+              }}
+            >
+              <option value="">New project</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.chatCount} chats)</option>
+              ))}
+            </SelectField>
+          </div>
+
+          <div className="project-list" role="list" aria-label="Project list">
+            {filteredProjects.map(p => {
+              const isCurrent = selected === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="listitem"
+                  className={`project-card ${isCurrent ? 'is-selected' : ''}`}
+                  onClick={() => selectProject(p)}
+                >
+                  <div className="project-card-header">
+                    <span className="project-card-title">{p.name || 'Untitled Project'}</span>
+                    <span className="project-card-count">
+                      {p.chatCount ?? 0} {p.chatCount === 1 ? 'chat' : 'chats'}
+                    </span>
+                  </div>
+                  {p.instructions && (
+                    <span className="project-card-snippet">
+                      {p.instructions.slice(0, 60)}{p.instructions.length > 60 ? '…' : ''}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {!filteredProjects.length && (
+              <div className="project-empty-state">
+                <p>{projects.length ? 'No matching projects.' : 'No projects yet.'}</p>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* Right Pane: Project Workbench Details */}
+        <div className="project-content">
+          {!details && !selected ? (
+            <div className="project-overview-empty">
+              <Layers size={36} className="project-empty-icon"/>
+              <h2>Start a project</h2>
+              <p>Keep your conversations, documents, system instructions, and task notes organized in private local projects.</p>
+              <div className="project-empty-actions">
+                <input
+                  className="project-title-input"
+                  aria-label="New project name"
+                  placeholder="Enter project name…"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={busy || !name.trim()}
+                  onClick={handleSaveProject}
+                >
+                  <Plus size={16}/> Create project
+                </button>
+              </div>
+              <div className="project-starter-templates">
+                <span className="templates-label">Or start from a template</span>
+                <div className="templates-grid">
+                  <button
+                    type="button"
+                    className="template-card"
+                    disabled={busy}
+                    onClick={async () => {
+                      const r = await run('projectSave', {
+                        id: '',
+                        name: 'General Research & Notes',
+                        instructions: 'Focus on clear, well-structured explanations with key takeaways and structured notes.'
+                      });
+                      if (r) { await refresh(); setSelected(r.id); }
+                    }}
+                  >
+                    <strong>Research & Notes</strong>
+                    <span>Private offline research, synthesis, and structured note keeping.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="template-card"
+                    disabled={busy}
+                    onClick={async () => {
+                      const r = await run('projectSave', {
+                        id: '',
+                        name: 'Software Engineering',
+                        instructions: 'Provide minimal, clean, robust code with syntax highlighting, root-cause explanations, and no filler.'
+                      });
+                      if (r) { await refresh(); setSelected(r.id); }
+                    }}
+                  >
+                    <strong>Software Engineering</strong>
+                    <span>Local programming assistant with syntax checks and workspace context.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="template-card"
+                    disabled={busy}
+                    onClick={async () => {
+                      const r = await run('projectSave', {
+                        id: '',
+                        name: 'Document Analysis',
+                        instructions: 'Extract key figures, verify citations against provided document pages, and highlight discrepancies.'
+                      });
+                      if (r) { await refresh(); setSelected(r.id); }
+                    }}
+                  >
+                    <strong>Document Analysis</strong>
+                    <span>Grounding and extraction workspace for PDFs, text files, and reports.</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Project Header Bar */}
+              <div className="project-header-bar">
+                <div className="project-title-wrap">
+                  <input
+                    className="project-title-input"
+                    aria-label="Project name"
+                    placeholder="Project name…"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                  />
+                  <div className="project-badges">
+                    <span className="project-meta-pill">{details?.chats?.length ?? 0} chats</span>
+                    <span className="project-meta-pill">{(details?.documents?.length ?? 0) + (details?.images?.length ?? 0)} files</span>
+                    <span className="project-meta-pill">{details?.notes?.length ?? 0} notes</span>
+                  </div>
+                </div>
+
+                <div className="project-header-actions">
+                  <button
+                    type="button"
+                    className="primary-button project-save-btn"
+                    disabled={busy || !name.trim()}
+                    onClick={handleSaveProject}
+                  >
+                    {savedFeedback ? <Check size={14}/> : <Save size={14}/>}
+                    {savedFeedback || 'Save Project'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button project-assign-btn"
+                    disabled={busy || !selected || !chatId}
+                    onClick={handleAssignChat}
+                    title={chatId ? 'Attach the currently open chat to this project' : 'Open a chat first to link it'}
+                  >
+                    <Plus size={14}/> Link Current Chat
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions Card */}
+              <div className="project-instructions-card">
+                <div className="project-card-heading">
+                  <strong>Project System Instructions</strong>
+                  <span className="project-card-sub">Injected into offline model context when chatting within this project.</span>
+                </div>
+                <textarea
+                  aria-label="Project instructions"
+                  value={instructions}
+                  onChange={e => setInstructions(e.target.value)}
+                  placeholder="Preferences, rules, coding guidelines, or project constraints for this project..."
+                  rows={3}
+                />
+              </div>
+
+              {/* Segmented View Tabs */}
+              <div className="project-tabs" role="tablist" aria-label="Project views">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-pressed={activeTab === 'conversations'}
+                  aria-selected={activeTab === 'conversations'}
+                  onClick={() => setActiveTab('conversations')}
+                >
+                  <MessageSquare size={14}/> Conversations ({details?.chats?.length ?? 0})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-pressed={activeTab === 'documents'}
+                  aria-selected={activeTab === 'documents'}
+                  onClick={() => setActiveTab('documents')}
+                >
+                  <FileText size={14}/> Files & Documents ({(details?.documents?.length ?? 0) + (details?.images?.length ?? 0)})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-pressed={activeTab === 'notes'}
+                  aria-selected={activeTab === 'notes'}
+                  onClick={() => setActiveTab('notes')}
+                >
+                  <CheckCircle2 size={14}/> Notes & Milestones ({details?.notes?.length ?? 0})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-pressed={activeTab === 'reminders'}
+                  aria-selected={activeTab === 'reminders'}
+                  onClick={() => setActiveTab('reminders')}
+                >
+                  <Clock size={14}/> Reminders ({reminders.length})
+                </button>
+              </div>
+
+              {/* Tab 1: Conversations */}
+              {activeTab === 'conversations' && (
+                <div className="project-pane project-chats-pane">
+                  {details?.chats?.length ? (
+                    <div className="project-chats-list">
+                      {details.chats.map(c => (
+                        <div className="project-chat-item" key={c.id}>
+                          <div className="project-chat-info">
+                            <MessageSquare size={16} className="project-chat-icon"/>
+                            <span className="project-chat-title">{c.title || 'Untitled chat'}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => onSelectChat?.(c.id)}
+                          >
+                            Open Chat <ChevronRight size={13}/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="project-empty-tab">
+                      <p>No conversations linked to this project yet.</p>
+                      <small>Click "Link Current Chat" above to attach your active chat.</small>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2: Files & Documents */}
+              {activeTab === 'documents' && (
+                <div className="project-pane project-files-pane">
+                  <div className="workspace-toolbar">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={handleAttachFile}
+                    >
+                      <Plus size={14}/> Add File to Project
+                    </button>
+                  </div>
+                  <div className="project-files-strip">
+                    {details?.documents?.map(path => (
+                      <button
+                        key={path}
+                        type="button"
+                        className="project-file-card"
+                        onClick={() => bridge?.openFile?.(path)}
+                        title={`Open ${path}`}
+                      >
+                        <FileText size={18}/>
+                        <span className="project-file-name">{path.split(/[\\/]/).at(-1)}</span>
+                      </button>
+                    ))}
+                    {details?.images?.map(image => (
+                      <button
+                        key={image.id}
+                        type="button"
+                        className="project-file-card"
+                        onClick={() => bridge?.openImage?.(image.path)}
+                        title={`Open ${image.path}`}
+                      >
+                        <ImageIcon size={18}/>
+                        <span className="project-file-name">{image.path.split(/[\\/]/).at(-1)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {!details?.documents?.length && !details?.images?.length && (
+                    <div className="project-empty-tab">
+                      <p>No files or images attached to this project.</p>
+                      <small>Attached documents provide source context for your project workflows.</small>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 3: Notes & Milestones */}
+              {activeTab === 'notes' && (
+                <div className="project-pane project-notes-pane">
+                  <div className="project-notes-list">
+                    {details?.notes?.map(n => (
+                      <article className="project-note-card" key={n.id}>
+                        <div className="project-note-header">
+                          <strong className="project-note-title">{n.title}</strong>
+                          <span className={`note-state-badge state-${(n.state || 'note').toLowerCase()}`}>
+                            {n.state}
+                          </span>
+                        </div>
+                        <p className="project-note-body">{n.body}</p>
+                      </article>
+                    ))}
+                    {!details?.notes?.length && (
+                      <div className="project-empty-tab">
+                        <p>No notes or milestones logged yet.</p>
+                        <small>Use notes to track decisions, verified tests, and pending engineering items.</small>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="project-note-composer">
+                    <textarea
+                      aria-label="Project note"
+                      value={note}
+                      onChange={e => setNote(e.target.value)}
+                      placeholder="Add a milestone, decision, or outstanding work item…"
+                      rows={2}
+                    />
+                    <div className="workspace-toolbar">
+                      <SelectField
+                        aria-label="Note status"
+                        value={noteState}
+                        onChange={e => setNoteState(e.target.value)}
+                      >
+                        {['NOTE', 'REQUESTED', 'IMPLEMENTED_ACCORDING_TO_REPORT', 'USER_TESTED', 'VERIFIED', 'PARTIAL', 'UNRESOLVED'].map(x => (
+                          <option key={x} value={x}>{x}</option>
+                        ))}
+                      </SelectField>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        disabled={busy || !note.trim()}
+                        onClick={handleAddNote}
+                      >
+                        <Plus size={14}/> Save Note
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Local Reminders */}
+              {activeTab === 'reminders' && (
+                <div className="project-pane project-reminders-pane">
+                  <div className="project-card-heading">
+                    <strong>Local Offline Reminders</strong>
+                    <span className="project-card-sub">Reminders notify locally while Offline Studio is active; no background execution.</span>
+                  </div>
+                  <div className="workspace-toolbar project-reminder-form">
+                    <input
+                      aria-label="Reminder title"
+                      value={reminderTitle}
+                      onChange={e => setReminderTitle(e.target.value)}
+                      placeholder="Reminder title or milestone…"
+                    />
+                    <input
+                      aria-label="Reminder time"
+                      type="datetime-local"
+                      value={due}
+                      onChange={e => setDue(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={busy || !reminderTitle || !due}
+                      onClick={async () => {
+                        await run('reminderCreate', {
+                          title: reminderTitle,
+                          due: new Date(due).getTime() / 1000
+                        });
+                        setReminderTitle('');
+                        await refresh();
+                      }}
+                    >
+                      <Calendar size={14}/> Set Reminder
+                    </button>
+                  </div>
+                  <div className="project-reminders-list">
+                    {reminders.map(r => (
+                      <div className="project-reminder-item" key={r.id}>
+                        <div className="project-reminder-text">
+                          <Clock size={15}/>
+                          <span>{r.title}</span>
+                          <small>Due: {new Date(r.due * 1000).toLocaleString()}</small>
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={async () => {
+                            await run('reminderDismiss', { id: r.id });
+                            await refresh();
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    ))}
+                    {!reminders.length && (
+                      <div className="project-empty-tab">
+                        <p>No active reminders.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }

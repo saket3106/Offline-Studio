@@ -125,12 +125,16 @@ class FluxWorkerImageFlowTests(unittest.TestCase):
         self.assertIn("GPU memory was tight", result["notice"])
 
     def test_performance_uses_only_supported_acceleration_and_keeps_steps(self):
-        result,worker=self.run_worker('A car',performance=True,capabilities={'--auto-fit','--sage-attn'})
+        result,worker=self.run_worker('A car',performance=True,capabilities={'-r','--auto-fit','--sage-attn'})
         command=worker.commands[0]
         self.assertIn('--auto-fit',command);self.assertIn('--sage-attn',command)
         self.assertNotIn('--params-backend',command)
         self.assertEqual(command[command.index('--steps')+1],'1')
         self.assertEqual(worker.image_metrics['parameter_placement'],'auto-fit')
+
+    def test_probed_cli_without_reference_flag_rejects_edit_before_dispatch(self):
+        with self.assertRaisesRegex(RuntimeError,'does not expose native reference editing'):
+            self.run_worker('A car',capabilities={'--auto-fit'})
 
     def test_older_runtime_retains_safe_disk_path(self):
         _,worker=self.run_worker('A car',performance=True,capabilities=set())
@@ -138,7 +142,7 @@ class FluxWorkerImageFlowTests(unittest.TestCase):
         self.assertIn('--offload-to-cpu',worker.commands[0])
 
     def test_oom_in_performance_returns_to_conservative_placement(self):
-        _,worker=self.run_worker('A car',flux_oom_once=True,performance=True,capabilities={'--auto-fit','--sage-attn'})
+        _,worker=self.run_worker('A car',flux_oom_once=True,performance=True,capabilities={'-r','--auto-fit','--sage-attn'})
         self.assertIn('--auto-fit',worker.commands[0]);self.assertIn('--params-backend',worker.commands[1])
         self.assertNotIn('--sage-attn',worker.commands[1]);self.assertEqual(worker.image_metrics['parameter_placement'],'disk')
 

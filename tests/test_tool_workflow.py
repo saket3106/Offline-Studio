@@ -266,18 +266,19 @@ class ToolWorkflowTests(unittest.TestCase):
         self.assertTrue(check.call_args_list)
         self.assertTrue(all(call.args[0]!=prompt for call in check.call_args_list))
 
-    def test_visible_length_cutoff_gets_one_tool_free_concise_recovery(self):
+    def test_visible_length_cutoff_keeps_the_single_streamed_draft(self):
+        # One message = one answer: a length cutoff is never replaced by a second draft.
         class LengthEngine(ScriptedEngine):
             def chat_completion(self,messages,**kwargs):
                 answer=super().chat_completion(messages,**kwargs)
                 self.runtime.last_generation_diagnostics.update(finish_reason='length' if len(self.requests)==1 else 'stop',generated_token_count=800 if len(self.requests)==1 else 80)
                 return answer
-        engine=LengthEngine(['The output file is `unfinished_','Preserve inputs, make the change, and verify the saved result.'])
+        engine=LengthEngine(['Keep the original. The output file is `unfinished_','Preserve inputs, make the change, and verify the saved result.'])
         _,done,failed,metrics=self.run_worker(engine,(),'Summarize a careful editing workflow.')
-        self.assertFalse(failed);self.assertEqual(done,['Preserve inputs, make the change, and verify the saved result.'])
-        self.assertEqual(len(engine.requests),2);self.assertEqual(engine.requests[-1][1]['allowed_tools'],[])
-        self.assertGreaterEqual(engine.requests[-1][1]['max_tokens'],1024)
+        self.assertFalse(failed);self.assertEqual(len(engine.requests),1)
+        self.assertIn('Keep the original.',done[0]);self.assertNotIn('Preserve inputs',done[0])
         self.assertEqual(metrics[-1]['tool_workflow']['finalization_reason'],'visible_answer_truncated')
+        self.assertTrue(metrics[-1]['response_incomplete']);self.assertTrue(metrics[-1]['response_truncated_by_length'])
 
     def test_repeated_visible_length_cutoff_is_never_marked_complete(self):
         class LengthEngine(ScriptedEngine):
@@ -286,9 +287,10 @@ class ToolWorkflowTests(unittest.TestCase):
                 self.runtime.last_generation_diagnostics.update(finish_reason='length',generated_token_count=800)
                 return answer
         engine=LengthEngine(['Unfinished fragment','Another unfinished fragment'])
-        _,done,failed,_=self.run_worker(engine,(),'Summarize a careful editing workflow.')
-        self.assertFalse(done);self.assertTrue(failed);self.assertEqual(len(engine.requests),2)
-        self.assertIn('Diagnostic: tools-',failed[0])
+        _,done,failed,metrics=self.run_worker(engine,(),'Summarize a careful editing workflow.')
+        self.assertFalse(failed);self.assertEqual(len(engine.requests),1)
+        self.assertIn('Unfinished fragment',done[0]);self.assertNotIn('Another unfinished fragment',done[0])
+        self.assertTrue(metrics[-1]['response_incomplete'])
 
     def test_exhausted_validation_formatting_returns_text_and_keeps_calculator(self):
         from app import ChatWorker

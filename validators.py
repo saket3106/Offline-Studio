@@ -17,6 +17,40 @@ from grounding import normalize_task_id
 from math_engine import number_in_text
 
 
+def trim_to_complete_sentence(text: str, min_keep_ratio: float = 0.5) -> str:
+    """End a length-truncated answer on its last complete sentence.
+
+    Used when the model hits its output limit: the streamed text is kept (never
+    regenerated) and only a dangling partial sentence is removed. If trimming
+    would discard too much (no sentence end near the tail, or an open code
+    fence), the text is returned unchanged.
+    """
+    value = str(text or "").rstrip()
+    if not value or value.count("```") % 2:
+        return value
+    matches = list(re.finditer(r"[.!?…](?:[\"'”’)\]]*)(?=\s|$)|\n\s*\n", value))
+    if not matches:
+        return value
+    end = matches[-1].end()
+    if end >= len(value):
+        return value
+    if end < len(value) * min_keep_ratio:
+        return value
+    return value[:end].rstrip()
+
+
+def word_target_status(response: str, target: int | None, tolerance: float = 0.25) -> dict[str, Any]:
+    """Soft length check for approximate requests ("in about 500 words").
+
+    Never a validation failure: the result is informational metadata only.
+    """
+    if not target:
+        return {}
+    count = len(WordCountValidator.count_words(response))
+    low, high = int(target * (1 - tolerance)), int(round(target * (1 + tolerance)))
+    return {"target": int(target), "actual": count, "withinTolerance": low <= count <= high, "tolerance": tolerance}
+
+
 def _strip_svgcopy_control_lines(text: str) -> str:
     """Remove the exact standalone UI artifact outside code fences only."""
     output = []
@@ -194,7 +228,7 @@ _DIAGNOSTIC_FAILURE = re.compile(
 
 
 def parse_numbered_response_sections(response: str, expected_tasks: list[int | str]) -> dict[int | str, dict[str, str]]:
-    """Parse numbered response sections without treating fenced code as headings."""
+    """Parse task sections, retaining nested lists and excluding fenced code."""
     expected = {normalize_task_id(task_id) for task_id in expected_tasks}
     if not expected:
         return {}
@@ -219,14 +253,13 @@ def parse_numbered_response_sections(response: str, expected_tasks: list[int | s
             match = _TASK_HEADING.match(body)
             if match:
                 task_id = normalize_task_id(match.group(1))
-                if task_id in expected and task_id not in sections:
+                if task_id in expected:
                     first_body = (match.group(2) or "").strip()
                     if first_body.endswith("**") and not first_body.startswith("**"):
                         first_body = first_body[:-2].strip()
                     elif first_body.endswith("__") and not first_body.startswith("__"):
                         first_body = first_body[:-2].strip()
                     starts.append((offset, task_id, line, first_body))
-                    sections[task_id] = {}  # Reserve the ID; duplicate list items are not section boundaries.
                 # A common format puts an opening code fence immediately after
                 # the numbered heading, e.g. "2. ```python". Track that fence so
                 # numeric code lines cannot be mistaken for sibling task headings.
@@ -236,6 +269,22 @@ def parse_numbered_response_sections(response: str, expected_tasks: list[int | s
                     marker = inline_fence.group(1)
                     fence_char, fence_size = marker[0], len(marker)
         offset += len(line)
+
+    # First determine the root indentation from all numeric task candidates.
+    # Reserving IDs during the scan lets an indented example numbered "1."
+    # steal task 1 before its real heading appears, losing sibling content on
+    # merge. Explicit dotted leaf IDs remain valid at their nested indentation.
+    def indentation(heading):return len(heading[:len(heading)-len(heading.lstrip(' \t'))].expandtabs(8))
+    numeric_indents=[indentation(heading) for _,tid,heading,_ in starts if isinstance(tid,int)]
+    root_indent=min(numeric_indents) if numeric_indents else 0
+    filtered=[]
+    for entry in starts:
+        _,tid,heading,_=entry
+        indent=indentation(heading)
+        if isinstance(tid,int) and indent>root_indent:continue
+        if tid in sections:continue
+        filtered.append(entry);sections[tid]={}
+    starts=filtered
 
     for index, (start, task_id, heading, first_line_body) in enumerate(starts):
         end = starts[index + 1][0] if index + 1 < len(starts) else len(text)
@@ -447,8 +496,7 @@ def enforce_exact_word_count(
     wc_label = m_wc.group(1).strip() if m_wc else (f"WORD COUNT: {exact_count}" if has_word_count_label else "")
 
     def _attach_label(res_text: str) -> str:
-        if wc_label and not re.search(r"(?im)^\s*WORD\s*COUNT\s*:\s*\d+\s*$", res_text):
-            return f"{res_text.rstrip()}\n\n{wc_label}"
+        # enforce_exact_word_count produces clean content text; meta labels are handled by finalize_response_text
         return res_text
 
     cleaned = strip_meta_labels(text).strip()
@@ -506,30 +554,16 @@ def enforce_exact_word_count(
                 if len(WordCountValidator.count_words(candidate)) == exact_count and _satisfies_word_constraints(candidate):
                     return candidate
 
-        # If still short, append natural terminal modifier before trailing punctuation
-        words_now = WordCountValidator.count_words(candidate)
-        rem = exact_count - len(words_now)
-        terminal_additions = {
-            1: "today",
-            2: "every day",
-        }
-        if rem in terminal_additions:
-            addition = terminal_additions[rem]
-            if candidate.endswith((".", "!", "?")):
-                punc = candidate[-1]
-                body = candidate[:-1].rstrip()
-                cand_test = f"{body} {addition}{punc}"
-            else:
-                cand_test = f"{candidate} {addition}"
-            if len(WordCountValidator.count_words(cand_test)) == exact_count and _satisfies_word_constraints(cand_test):
-                return cand_test
+        # Do not append fabricated dates or temporal modifiers (e.g. 'today', 'every day').
+        # If expanding contractions does not reach exact count, preserve candidate.
+        pass
 
     elif diff < 0:
-        # Too long: try contracting or removing filler words
+        # Too long: try contracting or removing non-semantic filler words
+        # Semantic qualifiers (often, always, never, daily, today, now, more, total)
+        # must NEVER be stripped as fillers.
         fillers = [
-            r"\bvery\s+", r"\breally\s+", r"\bnow\s+", r"\btoday\s+", r"\bdaily\s+",
-            r"\bwell\s+", r"\balways\s+", r"\boften\s+", r"\bsimply\s+", r"\bjust\s+",
-            r"\balso\s+", r"\bmore\s+", r"\boverall\s+", r"\btotal\s+",
+            r"\bvery\s+", r"\breally\s+", r"\bsimply\s+", r"\bjust\s+", r"\bwell\s+",
         ]
         for pat in fillers:
             match_word = pat.strip(r"\b\s+")
@@ -538,9 +572,9 @@ def enforce_exact_word_count(
             if re.search(pat, candidate, re.I):
                 candidate = re.sub(pat, "", candidate, count=1, flags=re.I)
                 if len(WordCountValidator.count_words(candidate)) == exact_count and _satisfies_word_constraints(candidate):
-                    return candidate
+                    return _attach_label(candidate)
 
-        # Contractions to reduce word count
+        # Contractions to reduce word count while strictly preserving semantics
         reverse_contractions = [
             (r"\bdo not\b", "don't"),
             (r"\bdoes not\b", "doesn't"),
@@ -559,17 +593,24 @@ def enforce_exact_word_count(
                 if len(WordCountValidator.count_words(candidate)) == exact_count and _satisfies_word_constraints(candidate):
                     return _attach_label(candidate)
 
-        # If still too long, try trimming non-required words from candidate
+        # If still too long, ONLY non-essential dispensable modifier words may be pruned.
+        # Core syntactic constituents (subjects, verbs, objects, predicate complements,
+        # booleans, negations, and frequency qualifiers) must NEVER be dropped.
         cur_words = WordCountValidator.count_words(candidate)
         excess = len(cur_words) - exact_count
         if 1 <= excess <= 4:
             toks = candidate.split()
             req_set = {rw.casefold() for rw in (required_words or [])}
+            dispensable_modifiers = {
+                "very", "really", "simply", "just", "basically", "essentially",
+                "actually", "overall", "development",
+            }
+            # Look only at interior tokens that are explicitly known dispensable modifiers
             new_toks = list(toks)
             dropped = 0
-            for i in range(len(new_toks) - 1, -1, -1):
+            for i in range(len(new_toks) - 2, 0, -1):
                 clean_tok = re.sub(r"^[^\w]+|[^\w]+$", "", new_toks[i]).casefold()
-                if clean_tok not in req_set and clean_tok not in {"and", "to", "in", "of", "the", "a", "is", "for"}:
+                if clean_tok in dispensable_modifiers and clean_tok not in req_set:
                     new_toks.pop(i)
                     dropped += 1
                     if dropped == excess:
@@ -1527,6 +1568,12 @@ def finalize_response_text(
                     if not re.search(rf"(?im)^\s*{re.escape(req_f)}\s*$", b):
                         # If content task passed, append missing deterministic required field directly
                         if t_id not in failed_ids and t_id not in missing_ids:
+                            m_w = re.match(r"(?im)^WORD\s*COUNT\s*:\s*(\d+)$", req_f.strip())
+                            if m_w:
+                                actual_b_words = len(WordCountValidator.count_words(strip_meta_labels(b)))
+                                if actual_b_words != int(m_w.group(1)):
+                                    required_fields_passed = False
+                                    continue
                             b = f"{b.rstrip()}\n\n{req_f}"
                             result = merge_numbered_task_sections(result, f"{t_id}. {b}", expected_ids, [t_id])
                             present_sections[t_id]["body"] = b
@@ -1552,6 +1599,12 @@ def finalize_response_text(
                 req_f_list.append(m_wc.group(1).upper())
         for req_f in req_f_list:
             if not re.search(rf"(?im)^\s*{re.escape(req_f)}\s*$", result):
+                m_w = re.match(r"(?im)^WORD\s*COUNT\s*:\s*(\d+)$", req_f.strip())
+                if m_w:
+                    actual_res_words = len(WordCountValidator.count_words(strip_meta_labels(result)))
+                    if actual_res_words != int(m_w.group(1)):
+                        # Do not append an unmeasured or false word-count label
+                        continue
                 result = f"{result.rstrip()}\n\n{req_f}"
         final_marker_passed = bool(result.strip())
 

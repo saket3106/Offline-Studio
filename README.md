@@ -1,92 +1,160 @@
-# OfflineGPT
+# Offline Studio
 
-A Windows desktop workspace for local chat, documents, images and voice. Python/PySide6 hosts a bundled React interface in Qt WebEngine. The default inference path is local; no cloud API account is required after dependencies, native runtimes and model assets have been provisioned.
+**A private AI assistant for Windows that runs entirely on your own PC.** Chat, voice, vision, image generation and an
+email assistant, with no cloud account, subscription or data leaving the machine (web search runs only when you ask).
 
-**Development status:** active engineering project with known correctness, performance and hardware acceptance gaps. This repository is a source export, not an installer or a production-readiness claim. It intentionally contains no conversations, databases, model weights, private diagnostics or native engine binaries.
+> Formerly *OfflineGPT*. The repository name is kept for existing links.
 
-## Implemented capabilities
+---
 
-- **Chat:** GPT-OSS 20B integration, streaming Markdown, code copying, cancellation, retry/regenerate, message versions, conversation search, pin/rename/export, bookmarks and prompt drafts.
-- **Controller:** task/subtask IDs, deterministic calculation and exact search tools, output validation, restricted code syntax/structural analysis and runtime-derived task accounting. Validators cover defined criteria; they do not guarantee arbitrary engineering answers are correct.
-- **Vision:** Qwen3-VL-8B-Instruct with a matching vision projector for image understanding and OCR. GPT-OSS reasons over the resulting text rather than pretending to see raw pixels.
-- **Images:** GPT-OSS prompt planning and direct stable-diffusion.cpp FLUX generation/editing; Original Prompt, Smart Enhance and Creative Direction constraint handling; image variants and non-destructive output. Requested UHD export can involve upscaling/resizing rather than native UHD sampling.
-- **Fast image tools:** crop/resize and mask-reviewed deterministic recoloring. Automatic semantic object segmentation is not solved; uncertain masks require review and correction or the generative edit path.
-- **Library:** searchable/filterable images, metadata, versions, logical removal/restoration, bulk operations and journal-backed recovery/review for ambiguous file operations. Windows Recycle Bin operations and application-level hidden items have distinct states; absence alone does not certify deletion.
-- **Voice:** microphone capture and local Whisper transcription; separate Kokoro-82M ONNX Read Aloud with voice selection, preview and interruption. Accuracy and latency depend on audio input and configuration.
-- **Documents:** selectable-text PDF parsing, exact phrase search with physical page locations, local retrieval for explanations, multiple-document workspaces and clickable local citations. PDF/DOCX/PPTX creation and supported document edits save separate outputs. Scanned-document OCR requires vision assets.
-- **Historical memory:** local SQLite conversation retrieval with original-record provenance and conservative coverage reporting. External chat histories require explicit import. Complete historical synthesis remains under development.
-- **Desktop:** deep-black/light themes, responsive sidebar, attachment controls, per-request timing, reported token statistics, model/resource status, local diagnostics and recovery controls.
+## Features
 
-The code retains optional LM Studio compatibility. The bundled default starts app-owned loopback inference workers; these are local subprocesses, not a mandatory external desktop app. Image generation invokes the existing local image engine directly; there is no ComfyUI requirement.
+| Area | What it does |
+|---|---|
+| **Chat** | Streaming answers from local GGUF models (GPT-OSS 20B, Qwen 3 / 3.5), conversation history, projects, file attachments |
+| **Documents** | Reads PDFs, Word and text files; answers with page-level citations |
+| **Web on request** | Searches the web only when you ask, and cites the pages it used |
+| **Agent mode** | Carries out multi-step tasks in a workspace folder you choose, with a permission prompt for each risky step |
+| **Vision** | Describe, read or answer questions about images (Qwen3-VL) |
+| **Image Studio** | Text-to-image and image editing with FLUX.2 Klein, plus 4x upscaling |
+| **Voice** | Speech-to-text with Whisper Large v3 Turbo on the GPU; spoken replies with Kokoro |
+| **Assistant actions** | "Email my father at 7:30 tomorrow saying …": drafts, schedules and sends it by itself. It can also open apps, send WhatsApp messages, and shut down or restart the PC (it asks first) |
+| **Interface** | AMOLED-black desktop UI, a command palette, a Tasks tab and small toasts for finished background jobs |
 
-## Desktop screenshots
+## Requirements
 
-The reviewed screenshots below use **synthetic demonstration content and a mock Qt bridge**, not private conversations or real inference results. They show the actual rebuilt React interface inside Qt WebEngine; they do not prove model performance.
+- Windows 10 or 11, 64-bit
+- **NVIDIA GPU with 8 GB+ VRAM recommended** (tested on an RTX 4060 Laptop, 8 GB). An up-to-date NVIDIA driver is
+  needed; the CUDA 12 runtime is included, so there is nothing else to install. CPU-only works, but it is slow.
+- 16 GB RAM (32 GB for GPT-OSS 20B)
+- Disk: about 3.5 GB for the app, plus your models (5–25 GB depending on which you choose)
 
-![OfflineGPT desktop demonstration](docs/screenshots/desktop-dark.png)
+## Install
 
-![OfflineGPT light appearance demonstration](docs/screenshots/desktop-light.png)
+1. Download **`OfflineStudio-<version>-win64.zip`** from the [latest release](https://github.com/saket3106/OfflineGPT/releases/latest).
+2. Right-click it, choose **Extract All…**, and extract it somewhere with space, e.g. `D:\OfflineStudio`.
+   You will get:
+   ```
+   OfflineStudio\
+   ├── Application\          the app (open "Offline Studio.exe")
+   └── Models\               put model files here
+       ├── Chat\  Vision\  Image\  Whisper\
+   ```
+3. Download the models you want (below) into the matching `Models` folder.
+4. Open `Application\Offline Studio.exe`. If Windows SmartScreen appears, choose **More info → Run anyway**: the app
+   is not code-signed.
 
-## Architecture
+Your chats, settings and generated images are stored inside `Application\`. Back that folder up before deleting it.
+
+## Models
+
+The app finds models **by file name**, so keep the names shown here. You only need the chat model to start; add the others for
+the features you want.
+
+| Folder | File | Size | Used for |
+|---|---|---|---|
+| `Models\Chat` | `Qwen3.5-9B-Q4_K_M.gguf` *(recommended for 8 GB GPUs)* | 5.3 GB | Chat |
+| `Models\Chat` | `gpt-oss-20b-MXFP4.gguf` *(strongest, needs 32 GB RAM)* | 12 GB | Chat |
+| `Models\Chat` | `Qwen3-4B-Q4_K_M.gguf` *(fast, light)* | 2.4 GB | Chat |
+| `Models\Vision` | `Qwen3VL-8B-Instruct-Q4_K_M.gguf` + `mmproj-Qwen3VL-8B-Instruct-F16.gguf` | 4.7 + 1.1 GB | Understanding images |
+| `Models\Image` | `flux-2-klein-base-9b-Q4_K_M.gguf` | 5.6 GB | Image generation |
+| `Models\Image` | `Qwen3-8B-Q4_K_S.gguf` | 4.5 GB | Text encoder for FLUX.2 |
+| `Models\Image` | `flux2-vae.safetensors` | 321 MB | FLUX.2 VAE |
+| `Models\Image` | `4x-UltraSharp.pth` | 64 MB | Upscaling |
+| `Models\Whisper` | `ggml-large-v3-turbo-q5_0.bin` | 548 MB | Voice input |
+
+Where to get them: search the file name on [Hugging Face](https://huggingface.co/models). The Whisper model is in
+[ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main) and Qwen3-VL in
+[Qwen/Qwen3-VL-8B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF). Any other GGUF chat
+model can be added from **Settings → Models**. Check each model's license before you use it.
+
+## How it works
 
 ```mermaid
-flowchart TD
-    UI[React + Base UI + Tailwind v4 + Motion + Lucide] --> Bridge[Qt WebChannel / DesktopBridge]
-    Bridge --> App[Python application controller]
-    App --> Store[Local SQLite / workspace services]
-    App --> Tools[Deterministic tools / document parsing / retrieval]
-    App --> Resource[Model lifecycle and memory coordination]
-    Resource --> Chat[Local llama-compatible worker / GPT-OSS 20B]
-    Resource --> Vision[Local vision worker / Qwen3-VL + projector]
-    Resource --> Image[stable-diffusion.cpp / FLUX + encoder + VAE]
-    Resource --> STT[Whisper worker / speech to text]
-    App --> TTS[Kokoro ONNX worker / Read Aloud]
-    Tools --> Chat
-    Vision --> Chat
-    Chat --> Image
+flowchart LR
+    UI["React UI<br/>(frontend-source → ui/)"] <-->|Qt WebChannel| APP["app.py<br/>PySide6 desktop host"]
+    APP --> ROUTER["router.py / intelligence_*<br/>intent + tool routing"]
+    ROUTER --> CHAT["model_runtime.py<br/>llama-server (GGUF, CUDA)"]
+    ROUTER --> AGENT["agent_runtime.py<br/>workspace + permissions + MCP"]
+    ROUTER --> DOCS["document_tools / rag_engine<br/>PDF + file retrieval"]
+    ROUTER --> WEB["research_network.py<br/>web search on request"]
+    ROUTER --> ACT["assistant_host / assistant_actions<br/>email, apps, WhatsApp, power"]
+    APP --> IMG["image_pipeline.py<br/>stable-diffusion.cpp (FLUX.2)"]
+    APP --> VOICE["voice_runtime / live_voice<br/>whisper.cpp + Kokoro"]
+    APP --> DB[("SQLite<br/>chats, memory, settings")]
 ```
 
-See [architecture and privacy](docs/ARCHITECTURE.md) for boundaries and current limitations.
+- **Desktop host**: `app.py` creates the Qt window, serves the built React UI and exposes a WebChannel bridge (`assistantPlan`,
+  `assistantExecute`, `saveAssistantSettings`, …) that the UI calls.
+- **Native engines**: these run as local child processes. `llama-server.exe` (llama.cpp) handles chat and vision,
+  `whisper-server.exe` handles speech and `sd-cli.exe` handles images. CUDA libraries sit in the `Application` root,
+  which is added to their `PATH`.
+- **Model lookup**: `integrated_runtime.py` resolves each configured model by file name in `..\Models\<Chat|Vision|Image|Whisper>`.
+- **Email assistant**: SMTP with automatic server discovery (MX lookup) and an app password stored with Windows DPAPI.
+  Emails with a time are scheduled and sent by a background outbox, even after a restart.
 
-## Hardware and prerequisites
+More detail is in [`docs/`](docs/): `AGENT_MODE.md`, `MODEL_RUNTIME.md`, `MODEL_MANAGER.md` and `RUNTIME_COMPATIBILITY.md`.
 
-- Windows x64; Python 3.12 is the observed build interpreter. Other platforms/interpreters are not accepted targets in this export.
-- Node.js and pnpm for the frontend. The committed pnpm lockfile supplies exact frontend dependency resolutions.
-- An NVIDIA CUDA-compatible runtime/driver for the currently configured native inference engines. Use matching DLL sets, not unrelated DLLs from another application.
-- Development/test checks can run without models. Real inference requires separately obtained engines and weights.
-- The engineering target is a machine with **16 GB RAM and an RTX 4060 Laptop GPU with 8 GB VRAM**. This is a constrained target, not a guarantee that every workflow fits. Quantized models, bounded context, sequential model loading, adequate free RAM/pagefile and thermal headroom are necessary. Do not keep all GPU models resident together.
-- Model assets consume tens of gigabytes, separately from this small source repository. Reserve additional space for environments, native packages, generated assets and rollback copies.
+## Repository layout
 
-## Setup and build
+```
+app.py                     desktop host + UI bridge
+integrated_runtime.py      configuration, model paths, engine processes
+router.py, intelligence_*  intent routing and tool selection
+agent_*.py                 Agent mode (workspace, permissions, MCP, memory)
+assistant_*.py             email, app launching and other assistant actions
+image_pipeline.py          Image Studio
+voice_*.py, live_voice.py  speech in/out
+frontend-source/           React + Vite UI source (builds into ui/)
+tests/                     Python unit tests        qa/   in-app test scripts
+tools/release_inplace.py   build + install a new release
+docs/                      design notes
+```
 
-Follow [SETUP.md](docs/SETUP.md) in a separate checkout. It covers environment setup, frontend compilation, synthetic tests, launching with isolated data and building the Qt shell. The existing private installation is not used or overwritten by these instructions.
+## Developing
 
-**Fresh-checkout boundary:** the frontend and Python shell/test code are present. A complete AI-enabled redistributable still needs native runtime provisioning, compatible model assets and license review. Exact upstream provenance/build flags for the currently used native binaries are not established by this export; a generic latest upstream binary is not guaranteed to accept this controller's flags/protocol.
+Requires Python 3.12, Node 20+ and pnpm.
 
-## Development status and limitations
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt -r requirements-agent.txt
+cd frontend-source; pnpm install --frozen-lockfile; pnpm build; cd ..   # builds ui/
+$env:OFFLINE_GPT_DATA_DIR = "$env:LOCALAPPDATA\OfflineStudio-dev"   # keep test data away from real chats
+.\.venv\Scripts\python app.py
+```
 
-- The October 15 checkpoint recorded 586 source tests and 17 packaged deterministic smoke checks. Those counts include private acceptance fixtures not shipped here; they are historical evidence, not this checkout's test count.
-- Independent model review still found a savepoint/transaction reasoning failure and incomplete historical synthesis. A narrow validator passing is not general correctness acceptance.
-- Live laptop-microphone accuracy remains unresolved. Recorded/synthetic checks do not settle physical input behavior.
-- UHD thermal acceptance, prolonged mixed-model workloads, true power-loss recovery and automatic semantic masking are not established. Earlier UHD work reached a thermal stop; do not use ordinary unit tests to imply it passed.
-- PDF layout-preserving edits are limited; complex layouts/fonts, ambiguous targets, protected documents and scanned text may need manual review. Spreadsheet formula recalculation and full office-editor fidelity are not guaranteed.
-- Arbitrary model-generated Python/shell execution is disabled. The available static validation and restricted deterministic operations are not a general sandbox.
-- Some logs/output paths still depend on the application directory even when a separate data profile is set. Keep the checkout writable and private local outputs ignored.
+Tests:
 
-Current export verification is documented in [EXPORT_VERIFICATION.md](docs/EXPORT_VERIFICATION.md).
+```powershell
+python -X utf8 -m unittest discover -s tests -p "test_*.py"     # backend
+cd frontend-source; npx vitest run; node --test src/*.test.js    # frontend
+```
 
-## Dependencies, models and licensing
+The source checkout does not include the native engines (`llama-server`, whisper, stable-diffusion, CUDA DLLs). For a
+complete working app, use the release zip, or copy those engines from it next to `app.py`.
 
-See [THIRD_PARTY.md](docs/THIRD_PARTY.md) and [MODEL_ASSETS.md](docs/MODEL_ASSETS.md). Major review items include PyMuPDF's AGPL/commercial options, Qt/Chromium obligations, GPL speech dependencies and the FLUX.2 Klein **Base 9B non-commercial** model license. Do not assume every component is MIT/Apache or that private hosting removes redistribution obligations.
+## Publishing an update (maintainer notes)
 
-No project-wide open-source license is selected by this preparation. Confirm ownership of the application code/branding and choose a compatible licensing policy before broader distribution. Third-party rights remain with their owners. Model files and native runtime binaries are excluded even from the proposed private source upload.
+After a major improvement:
 
-## Publishing privately
+```powershell
+cd C:\Users\mesak\Documents\OfflineGPT\Source
+git status                                  # review what changed
+git add -A
+git commit -m "Short description of the improvement"
+git push origin HEAD:main                   # update GitHub
+git tag v1.1.0; git push origin v1.1.0      # optional: mark a new version
+```
 
-### Existing private repository workflow
+To publish a new downloadable package, run `python tools/make_release_zip.py v1.1.0`. It zips the installed `Application`
+without your personal data and writes `OfflineStudio-v1.1.0-win64.zip` into the `OfflineGPT` folder. Then on GitHub go to **Releases → Draft a new release**. Choose the tag, attach the zip and click **Publish**. Each attached file must be under 2 GB.
 
-For approved changes from the separate development workspace, use [SOURCE_SYNC.md](docs/SOURCE_SYNC.md). Synchronization previews an exact allowlist, protects sanitized files, requires a reviewed snapshot, journals recoverable copies and leaves Git staging/commit/push manual. [Presentation roadmap](docs/GITHUB_PRESENTATION_ROADMAP.md) and [Windows distribution plan](docs/WINDOWS_DISTRIBUTION.md) define future work and release gates.
+## Privacy
 
-The source manifest now uses portable **v2** hashes: UTF-8 text is normalized to LF and binary assets retain exact-byte hashes. Git history and publication settings are not changed by the synchronizer.
+Everything runs locally. Nothing is sent anywhere unless you ask for a web search, send an email or open a link. Chats,
+settings, the email password (encrypted with Windows DPAPI) and generated images stay in `Application\` on your PC.
 
-Read [GITHUB_DESKTOP.md](docs/GITHUB_DESKTOP.md). Review the staging contents first; keep **Keep this code private** checked. This preparation creates no remote repository and performs no push.
+## License and third-party components
+
+Offline Studio bundles llama.cpp, whisper.cpp and stable-diffusion.cpp (MIT), Qt / PySide6 (LGPL v3), Kokoro and the
+NVIDIA CUDA runtime (redistributable under NVIDIA's EULA). Models are not included and each has its own license.
