@@ -42,7 +42,6 @@ Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build
 - Helper servers tied to app (kill-on-close job) + startup orphan sweep · 640a485 · VERIFIED-REAL (force-close leaves none)
 - Whisper-first Live Voice (GPU Whisper, chat fitted around it; make-room once) · f11b504 · VERIFIED-REAL via virtual mic:
   STT cuda 188-388 ms (was 10-12 s), speech end → answer ~2.3 s, cold + model-preloaded; chat 25 tok/s in voice (35 alone)
-
 - Barge-in reference subtraction (speech RMS as echo reference) · cd2b837 · VERIFIED-REAL vmic: 565/627/604 ms, echo-only never fired
 - Hindi/Marathi via Kokoro hf_alpha/hm_omega + hi/mr phonemes · af1ef12 · VERIFIED-REAL round trip hi .984 mr .976
 - Web/Hybrid grounding ([Verified Search Context], topic query, Always allow, citation chips) · 4e94a94 · VERIFIED-REAL dev run (no refusal, 7-8 cites)
