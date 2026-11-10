@@ -24,7 +24,6 @@ Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build
   calculator card waits; gaming-mode preview; question stays chat; email drafted by local model); voice UNIT-TESTED
 - Send time only from explicit scheduling words · 7b84aab · UNIT-TESTED (bug found in real app)
 - "capabilities" question no longer injects tool schemas · 65593dd · UNIT-TESTED
-- Installed: Assistant-20261107j exe 0604447d… · backups Application\backups\*pre-Assistant-20261107j* (343 chats, quick_check ok)
 - Whisper re-warm after model load, 700 ms endpoint, tolerant exit grammar, GTA/Epic + music, model told capabilities · c564508 · UNIT-TESTED (+REAL: GTA resolves to 'Grand Theft Auto V Enhanced')
 - Assistant tab: pc_control tools, agent (rules → detect → model plan), risk tiers, voice yes/no · 3e66ca9, 728b6e0, d5ece58, db7bc96 · VERIFIED-REAL (status 111 ms, screenshot 325 ms, volume ~110 ms, show desktop 179 ms; model plan 1.75 s warm)
 - UI polish pass from real-app audit (12 items) · ad6126b · VERIFIED-REAL screenshots offline-studio-fix/after/polish
@@ -37,13 +36,11 @@ Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build
 - Barge-in keeps the interrupting words (PcmCarry: 1.5 s pre-roll + recording until next capture) · 1eb3472, 1495a5d ·
   VERIFIED-REAL via internal virtual mic (qa/vmic_barge_in.mjs): fire 395 ms, carry 1700 ms, full sentence transcribed
 - Deep AMOLED black dark palette restored (canvas #000, sidebar #080808) · 344cd44 · VERIFIED-REAL computed colours
-- Installed: Voice-20261107x exe d61e383d… · dbeb8a9 · rollback: ... rollback --name Voice-20261107x
 - Live Voice VRAM reservation for Whisper (fit-target 512+1400 while voice on) · e185bde, 2118883 · UNIT-TESTED;
   installed Voice-20261107z (cf4d7c1). Real run still CPU: orphaned servers held the GPU (see ledger)
 - Helper servers tied to app (kill-on-close job) + startup orphan sweep · 640a485 · VERIFIED-REAL (force-close leaves none)
 - Whisper-first Live Voice (GPU Whisper, chat fitted around it; make-room once) · f11b504 · VERIFIED-REAL via virtual mic:
   STT cuda 188-388 ms (was 10-12 s), speech end → answer ~2.3 s, cold + model-preloaded; chat 25 tok/s in voice (35 alone)
-- Installed: Voice-20261107b exe b1c6eba9… · 7585193 · rollback: ... rollback --name Voice-20261107b
 
 - Barge-in reference subtraction (speech RMS as echo reference) · cd2b837 · VERIFIED-REAL vmic: 565/627/604 ms, echo-only never fired
 - Hindi/Marathi via Kokoro hf_alpha/hm_omega + hi/mr phonemes · af1ef12 · VERIFIED-REAL round trip hi .984 mr .976
