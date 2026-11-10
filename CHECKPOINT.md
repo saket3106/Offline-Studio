@@ -3,27 +3,28 @@
 ## MISSION / CURRENT PHASE
 User mission: the app works smartly and professionally like online AI apps and like local personal
 assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. In-place install authorized.
-Phase: speed + polish audit. Route-20261112c installed (exe c3809be5…). Data in UserData; Backups keep 2.
+Phase: speed + polish audit. Route-20261112d installed (exe 80bbc046…). Data in UserData; Backups keep 2.
 
 ## NEXT STEP (exact, executable)
-Release the 8k→4K fix, then prompt-cache work: stable per-chat system prompt + chunk-stable history window
-(app.py ~16229/16385; turn_trace: 18/128 turns reused cache, firstToken median 1429 ms). Measure before/after.
+Stable system prompt per chat: memory prefs are looked up per question (app.py:16028 context_fast(text)) and tool/
+category branches reshape the system prompt → cache miss (turn 2 "And of France?" reused 0). Pin prefs per chat; see
+DECISIONS 2026-11-11 for why per-turn context must not move into the stored user turn. Probe: scratchpad cache_turns.sh.
 Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build inputs).
 
 ## DONE
+- Stable history window (start moves every 3 turns) · b70ba67 · VERIFIED-REAL 12d (turns 7-10 first token 634-825 → 250-332 ms
+  except the window step 638 ms; replay of 506 real turns: reusable prefix 52% → 66%). 5K/8K prompts → 4K output · f3e2423 · UNIT-TESTED
 - Image turns routed by intent (generate/edit/ops/describe/chat; model asked when unsure) · 911f8f6 · VERIFIED-REAL 12c
   (new chat "draw…" → image; "make the apple green" → real edit 25 s; attached image + new prompt → new image; long
   prompt with scale/crop/enhance → new image; chat question → text). 4K edits via 2048 px working copy · 2b70120 · VERIFIED-REAL
 - Whisper warm CUDA reuse + CPU threads; warm mic per live session · 2811f4e · VERIFIED-REAL (STT 21 s → 222–366 ms; mic 700 → 256 ms)
-- No speaking/thinking flicker · 2811f4e · VERIFIED-REAL
-- Speech via web engine (echo-cancelled) + Qt fallback · 2811f4e · VERIFIED-REAL (10/10 chunks, 0 errors)
+- No speaking/thinking flicker; speech via web engine (echo-cancelled) + Qt fallback · 2811f4e · VERIFIED-REAL (10/10 chunks)
 - Barge-in by voice · 2811f4e + ac357fa · VERIFIED-REAL (fired 4/5 speaking turns; story interrupted & resumed)
 - Barge-in on audio thread (not throttled when hidden) · 3b68cb3 · VERIFIED-REAL visible (38 updates/s); hidden UNTESTED
 - PC actions engine · d3ff331 · UNIT-TESTED (29 tests)
 - PC actions in chat + voice (cards, spoken yes/no) · ac357fa · VERIFIED-REAL chat (open notepad → confirm → launched 222 ms;
   calculator card waits; gaming-mode preview; question stays chat; email drafted by local model); voice UNIT-TESTED
-- Send time only from explicit scheduling words · 7b84aab · UNIT-TESTED (bug found in real app)
-- "capabilities" question no longer injects tool schemas · 65593dd · UNIT-TESTED
+- Send time only from explicit scheduling words · 7b84aab; "capabilities" no longer injects tool schemas · 65593dd · UNIT-TESTED
 - Whisper re-warm after model load, 700 ms endpoint, tolerant exit grammar, GTA/Epic + music, model told capabilities · c564508 · UNIT-TESTED (+REAL: GTA resolves to 'Grand Theft Auto V Enhanced')
 - Assistant tab: pc_control tools, agent (rules → detect → model plan), risk tiers, voice yes/no · 3e66ca9, 728b6e0, d5ece58, db7bc96 · VERIFIED-REAL (status 111 ms, screenshot 325 ms, volume ~110 ms, show desktop 179 ms; model plan 1.75 s warm)
 - UI polish pass from real-app audit (12 items) · ad6126b · VERIFIED-REAL screenshots offline-studio-fix/after/polish
