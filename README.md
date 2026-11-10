@@ -36,15 +36,16 @@ email assistant, with no cloud account, subscription or data leaving the machine
    You will get:
    ```
    OfflineStudio\
-   ├── Application\          the app (open "Offline Studio.exe")
-   └── Models\               put model files here
-       ├── Chat\  Vision\  Image\  Whisper\
+   ├── Application\          the program only (open "Offline Studio.exe")
+   ├── Models\               put model files here: Chat\  Vision\  Image\  Whisper\
+   └── UserData\             your chats, settings, images and logs (created and filled by the app)
    ```
 3. Download the models you want (below) into the matching `Models` folder.
 4. Open `Application\Offline Studio.exe`. If Windows SmartScreen appears, choose **More info → Run anyway**: the app
    is not code-signed.
 
-Your chats, settings and generated images are stored inside `Application\`. Back that folder up before deleting it.
+Your chats, settings and generated images are stored in `UserData\`, separate from the program, so updating or
+replacing `Application\` never touches them. Back up `UserData\` to keep your history.
 
 ## Models
 
@@ -147,12 +148,12 @@ git tag v1.1.0; git push origin v1.1.0      # optional: mark a new version
 ```
 
 To publish a new downloadable package, run `python tools/make_release_zip.py v1.1.0`. It zips the installed `Application`
-without your personal data and writes `OfflineStudio-v1.1.0-win64.zip` into the `OfflineGPT` folder. Then on GitHub go to **Releases → Draft a new release**. Choose the tag, attach the zip and click **Publish**. Each attached file must be under 2 GB.
+(never your data) and writes `OfflineStudio-v1.1.0-win64.zip` into `OfflineGPT\Releases`. Then on GitHub go to **Releases → Draft a new release**. Choose the tag, attach the zip and click **Publish**. Each attached file must be under 2 GB.
 
 ## Privacy
 
 Everything runs locally. Nothing is sent anywhere unless you ask for a web search, send an email or open a link. Chats,
-settings, the email password (encrypted with Windows DPAPI) and generated images stay in `Application\` on your PC.
+settings, the email password (encrypted with Windows DPAPI) and generated images stay in `UserData\` on your PC.
 
 ## License and third-party components
 

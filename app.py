@@ -269,7 +269,7 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QVBoxLayo
 
 
 
-from integrated_runtime import (EngineManager, EmptyVisibleResponseError, ToolCallCompletion, tie_child_to_app, stop_orphaned_helpers,
+from integrated_runtime import (default_data_dir, EngineManager, EmptyVisibleResponseError, ToolCallCompletion, tie_child_to_app, stop_orphaned_helpers,
 
 
 
@@ -365,7 +365,7 @@ from rag_engine import search_document_exact
 
 
 
-DATA_DIR=Path(os.environ.get('OFFLINE_GPT_DATA_DIR',str(APP_DIR))).resolve()
+DATA_DIR=default_data_dir().resolve()
 def apply_windows_titlebar_theme(widget,dark):
     """Make the native Windows caption follow the app theme (DWM attributes).
     20/19 = immersive dark mode (Win10 20H1+/earlier), 35/36 = caption/text colour (Win11)."""

@@ -13,7 +13,8 @@ prepare: seals SOURCE_MANIFEST.sha256 (changed + new tracked source files) and r
 build:   runs PyInstaller with the reviewed build environment; the spec's own gates write
          PACKAGING_COMPATIBILITY.json and COMPILED_SOURCE_ACCEPTANCE.json.
 install: refuses while Offline Studio runs; backs up exe, ui and a SQLite .backup() copy into
-         Application/backups/, then copies the built exe and Source/ui into Application.
+         Backups/Updates/ (only the newest KEEP_UPDATE_BACKUPS sets are kept), then copies the built
+         exe and Source/ui into Application. Nothing else is added to Application.
 rollback: restores the exe and ui saved by install.
 """
 import argparse, copy, hashlib, json, os, shutil, sqlite3, subprocess, sys, time, zipfile
@@ -21,6 +22,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'Source'; APP = ROOT / 'Application'; CURRENT = ROOT / 'Recovery' / 'Current'
+UPDATE_BACKUPS = ROOT / 'Backups' / 'Updates'; KEEP_UPDATE_BACKUPS = 2
+
+
+def data_dir():
+    """The installed app's data folder: UserData beside Application when present (see default_data_dir)."""
+    shared = ROOT / 'UserData'
+    return shared if shared.is_dir() else APP
+
+
+def prune_update_backups():
+    """Keep only the newest update backup sets; each set is exe + ui zip + database copy sharing one tag."""
+    sets = {}
+    for f in UPDATE_BACKUPS.glob('*-pre-*'):
+        sets.setdefault(f.name.split('-pre-', 1)[1].rsplit('.', 1)[0].removesuffix('.zip'), []).append(f)
+    newest = sorted(sets, key=lambda tag: max(f.stat().st_mtime for f in sets[tag]), reverse=True)
+    for tag in newest[KEEP_UPDATE_BACKUPS:]:
+        for f in sets[tag]:
+            f.unlink()
 sys.path.insert(0, str(SOURCE))
 from in_place_packaging import digest, manifest_inputs  # noqa: E402
 
@@ -117,12 +136,12 @@ def install(name):
     accepted = json.loads((release / 'COMPILED_SOURCE_ACCEPTANCE.json').read_text())
     assert digest(built) == accepted['exeSha256'], 'Built exe does not match its compiled acceptance receipt'
     if running(): raise SystemExit('Offline Studio is running; close it first.')
-    backups = APP / 'backups'; tag = f'pre-{name}'
+    backups = UPDATE_BACKUPS; backups.mkdir(parents=True, exist_ok=True); tag = f'pre-{name}'
     shutil.copy2(APP / 'Offline Studio.exe', backups / f'Offline Studio.exe.bak-{tag}')
     with zipfile.ZipFile(backups / f'ui-{tag}.zip', 'w', zipfile.ZIP_DEFLATED) as z:
         for f in (APP / 'ui').rglob('*'):
             if f.is_file(): z.write(f, f.relative_to(APP / 'ui'))
-    src = sqlite3.connect(f'file:{APP / "offline_gpt.sqlite3"}?mode=ro', uri=True); dst = sqlite3.connect(backups / f'offline_gpt-{tag}.sqlite3')
+    src = sqlite3.connect(f'file:{data_dir() / "offline_gpt.sqlite3"}?mode=ro', uri=True); dst = sqlite3.connect(backups / f'offline_gpt-{tag}.sqlite3')
     src.backup(dst); check = dst.execute('pragma quick_check').fetchone()[0]; chats = dst.execute('select count(*) from chats').fetchone()[0]; dst.close(); src.close()
     assert check == 'ok', 'Database backup failed integrity check'
     shutil.copy2(built, APP / 'Offline Studio.exe')
@@ -133,11 +152,14 @@ def install(name):
     result = {'installedExeSha256': digest(APP / 'Offline Studio.exe'), 'expected': accepted['exeSha256'], 'uiMismatches': mismatched, 'backupTag': tag, 'chatsInBackup': chats, 'dbBackupCheck': check}
     (release / 'INSTALL_RESULT.json').write_text(json.dumps(result, indent=2)); print(json.dumps(result, indent=2))
     assert result['installedExeSha256'] == accepted['exeSha256'] and not mismatched
+    prune_update_backups()
 
 
 def rollback(name):
     if running(): raise SystemExit('Offline Studio is running; close it first.')
-    backups = APP / 'backups'; tag = f'pre-{name}'
+    tag = f'pre-{name}'
+    backups = next((d for d in (UPDATE_BACKUPS, ROOT / 'Backups' / 'Application-backups', APP / 'backups')
+                    if (d / f'Offline Studio.exe.bak-{tag}').is_file()), UPDATE_BACKUPS)
     shutil.copy2(backups / f'Offline Studio.exe.bak-{tag}', APP / 'Offline Studio.exe')
     with zipfile.ZipFile(backups / f'ui-{tag}.zip') as z: z.extractall(APP / 'ui')
     print('Restored', digest(APP / 'Offline Studio.exe'))

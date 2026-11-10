@@ -2,15 +2,16 @@
 Models layout with instructions.
 
 Usage:  python tools/make_release_zip.py v1.1.0 [out_dir]
-Writes OfflineStudio-<version>-win64.zip (default out_dir: the OfflineGPT folder). Attach it to a GitHub release;
+Writes OfflineStudio-<version>-win64.zip (default out_dir: OfflineGPT/Releases). Attach it to a GitHub release;
 GitHub limits each attached file to 2 GiB."""
 import fnmatch, sys, zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]  # OfflineGPT\ (this file is OfflineGPT\Source\tools\)
+ROOT = Path(__file__).resolve().parents[2]  # OfflineGPT/ (this file is OfflineGPT/Source/tools/)
 APP = ROOT / 'Application'
+# Data now lives in ROOT/UserData; the excludes below still guard older installs that kept it inside Application.
 version = sys.argv[1]
-out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT
+out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / 'Releases'
 TOP = 'OfflineStudio'
 
 # Personal data and machine-specific state never leave this PC.
@@ -60,6 +61,7 @@ with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=6, allowZi
         z.write(path, f'{TOP}/Application/{rel.as_posix()}')
         count += 1; size += path.stat().st_size
     z.writestr(f'{TOP}/Application/kokoro/cache/', '')
+    z.writestr(f'{TOP}/UserData/', '')  # chats, settings and images go here, never inside Application
     for group in ('Chat', 'Vision', 'Image', 'Whisper'):
         z.writestr(f'{TOP}/Models/{group}/.keep', '')
     z.writestr(f'{TOP}/Models/README.txt', MODELS_README)

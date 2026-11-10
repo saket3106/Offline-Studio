@@ -198,7 +198,22 @@ class ToolCallCompletion:
 
 
 
-CONFIG_PATH = Path(os.environ.get("OFFLINE_GPT_DATA_DIR",str(APP_DIR))) / "offline_gpt_config.json"
+def default_data_dir() -> Path:
+    """Where chats, settings, images and logs live.
+
+    OFFLINE_GPT_DATA_DIR wins. An installed copy keeps its data in a UserData folder next to Application when that
+    folder exists, so Application holds only program files; otherwise (older installs, source runs, tests) the data
+    stays beside the program as before."""
+    configured = os.environ.get("OFFLINE_GPT_DATA_DIR")
+    if configured:
+        return Path(configured)
+    shared = APP_DIR.parent / "UserData"
+    if getattr(sys, "frozen", False) and shared.is_dir():
+        return shared
+    return APP_DIR
+
+
+CONFIG_PATH = default_data_dir() / "offline_gpt_config.json"
 
 
 
