@@ -101,3 +101,8 @@ break the updater's recorded paths, and the updater rejects junctions on purpose
 Lesson: Source/VCRUNTIME140.dll, VCRUNTIME140_1.dll and MSVCP140.dll are build inputs (the packaging gate requires the
 exact installed bytes). Deleting them made Route-20261111a fail; they were restored with hashes matching the 20261109m
 record. Never delete loose DLLs in Source.
+
+## 2026-11-11 — Commits carry only the owner's name
+The owner wants to be the only contributor on GitHub. Removed the `Co-Authored-By: Claude` trailers from the four
+published commits (trees, authors and dates unchanged), re-tagged v1.0.0/v1.1.0 and force-pushed; the v1.1.0 release
+and its zip are untouched. From now on no commit carries a co-author or "Generated with" line.
