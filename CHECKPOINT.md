@@ -3,15 +3,18 @@
 ## MISSION / CURRENT PHASE
 User mission: the app works smartly and professionally like online AI apps and like local personal
 assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. In-place install authorized.
-Phase: layout cleanup. Application = program only; data in UserData; backups in Backups (Updates keeps 2); zips in Releases. Route-20261111b installed.
+Phase: speed + polish audit. Route-20261112c installed (exe c3809be5…). Data in UserData; Backups keep 2.
 
 ## NEXT STEP (exact, executable)
-Owner attaches Releases\OfflineStudio-v1.0.0-win64.zip to GitHub release v1.0.0 and publishes. Then QUEUE 2.
+Release the 8k→4K fix, then prompt-cache work: stable per-chat system prompt + chunk-stable history window
+(app.py ~16229/16385; turn_trace: 18/128 turns reused cache, firstToken median 1429 ms). Measure before/after.
 Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build inputs).
 
 ## DONE
-- Whisper warm CUDA reuse + CPU threads · 2811f4e · VERIFIED-REAL (STT 21 s → 222–366 ms)
-- Warm mic per live session · 2811f4e · VERIFIED-REAL (mic ready 700 → 256 ms)
+- Image turns routed by intent (generate/edit/ops/describe/chat; model asked when unsure) · 911f8f6 · VERIFIED-REAL 12c
+  (new chat "draw…" → image; "make the apple green" → real edit 25 s; attached image + new prompt → new image; long
+  prompt with scale/crop/enhance → new image; chat question → text). 4K edits via 2048 px working copy · 2b70120 · VERIFIED-REAL
+- Whisper warm CUDA reuse + CPU threads; warm mic per live session · 2811f4e · VERIFIED-REAL (STT 21 s → 222–366 ms; mic 700 → 256 ms)
 - No speaking/thinking flicker · 2811f4e · VERIFIED-REAL
 - Speech via web engine (echo-cancelled) + Qt fallback · 2811f4e · VERIFIED-REAL (10/10 chunks, 0 errors)
 - Barge-in by voice · 2811f4e + ac357fa · VERIFIED-REAL (fired 4/5 speaking turns; story interrupted & resumed)
