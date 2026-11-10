@@ -89,3 +89,15 @@ Models are not bundled (size and licences); the README lists the exact file name
 Two tests read private fixtures outside the repo (an acceptance receipt in Documentation/, a Mustang photo in the old logs
 junction). They now skip when those files are absent, so a fresh GitHub clone runs the suite cleanly; the image-lookup
 test uses a temporary PNG instead.
+
+## 2026-11-11 Application holds only the program
+Owner wants Application small, transferable and program-only, with everything else kept but outside it. The installed app
+now uses OfflineGPT/UserData for chats, settings, images, logs and caches when that folder exists (`default_data_dir`,
+frozen builds only, so source runs and tests never touch real data). Data was moved by same-drive rename and 938 stored
+file paths were rewritten, after a verified database copy (343 chats before and after, integrity ok). In-place updates
+back up to Backups/Updates and keep the newest two sets. Older backups and leftovers are kept in Backups/. Unused
+whisper extras moved to Backups/Legacy (voice server verified on GPU). Folder name stays OfflineGPT: renaming it would
+break the updater's recorded paths, and the updater rejects junctions on purpose.
+Lesson: Source/VCRUNTIME140.dll, VCRUNTIME140_1.dll and MSVCP140.dll are build inputs (the packaging gate requires the
+exact installed bytes). Deleting them made Route-20261111a fail; they were restored with hashes matching the 20261109m
+record. Never delete loose DLLs in Source.

@@ -3,11 +3,11 @@
 ## MISSION / CURRENT PHASE
 User mission: the app works smartly and professionally like online AI apps and like local personal
 assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. In-place install authorized.
-Phase: repo cleanup + public release v1.0.0 (README, tools/make_release_zip.py, single 1.8 GB zip). Email auto-schedule, time parsing and top-right toast installed in Route-20261109m; scheduled send VERIFIED-REAL.
+Phase: layout cleanup. Application = program only; data in UserData; backups in Backups (Updates keeps 2); zips in Releases. Route-20261111b installed.
 
 ## NEXT STEP (exact, executable)
-Owner attaches OfflineGPT\OfflineStudio-v1.0.0-win64.zip (1.75 GB) to GitHub release v1.0.0 and publishes. Then QUEUE 2.
-Git: work on `main` (pushed as one clean v1.0.0 commit 64d419b on origin/main); old fix/ui-voice-overhaul kept local only (private history).
+Owner attaches Releases\OfflineStudio-v1.0.0-win64.zip to GitHub release v1.0.0 and publishes. Then QUEUE 2.
+Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build inputs).
 
 ## DONE
 - Whisper warm CUDA reuse + CPU threads · 2811f4e · VERIFIED-REAL (STT 21 s → 222–366 ms)
@@ -75,7 +75,7 @@ Git: work on `main` (pushed as one clean v1.0.0 commit 64d419b on origin/main); 
 - Smart chat box (composer attach/mic/Live Voice/send; agent_route+routeMessage; Settings → Internet & privacy; redo ±web) · 4da7881..
 - Web only when asked (ASK_WEB / pasted link / weather), auto-Agent reset before quick actions + New chat, multi-recipient
   email, no sidebar logo · bccd376, ba59f51, 6382ddf · VERIFIED-REAL web/redo/agent routing in app; email demo pending
-- Installed: Route-20261109m exe 3e0ff8af… · rollback --name Route-20261109m restores Route-20261109l. Next name e.g. Route-20261110a --prior Route-20261109m.
+- Installed: Route-20261111b exe e92cfc5a… · rollback --name Route-20261111b restores m (then move UserData back into Application). Next: Route-20261112a --prior Route-20261111b. 20261111a = failed dir.
 - Cleanup 10 Nov: ~46 GB of old Recovery/backups/logs deleted (receipt keep-closure kept). Script followed junctions and emptied
   Application/whisper + stable-diffusion; restored from official whisper.cpp b5454 cuda-12.4 and sd.cpp master-a3c49b1 cuda12
   zips · VERIFIED-REAL (whisper transcribed; FLUX 1280x720 in app 23 s). Source/logs junction → real dir. Build after cleanup UNTESTED.
