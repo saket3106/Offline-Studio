@@ -42,6 +42,27 @@ def _image(path,cancel=None):
     return result
 
 
+def working_reference(path,cache_dir,max_side=2048):
+    """The image itself when it is within the reference limits, else a cached PNG copy scaled to max_side.
+
+    Large results (a 3840x2160 PNG is ~25 MB) exceed MAX_REFERENCE_BYTES; the edit canvas is <=1024 px, so a
+    2048 px copy keeps every detail the edit can use. Copies are keyed by the source bytes and reused."""
+    from PIL import Image,ImageOps
+    source=_regular(path)
+    with Image.open(source) as image:
+        size=image.size;fmt=image.format
+    if source.stat().st_size<=MAX_REFERENCE_BYTES and max(size)<=max_side and fmt in {'PNG','JPEG','WEBP'}:return source
+    folder=_regular(cache_dir,False);folder.mkdir(parents=True,exist_ok=True)
+    target=folder/(_sha(source)[:32]+f'-{max_side}.png')
+    if target.is_file():return _regular(target)
+    with Image.open(source) as image:
+        if image.width*image.height>4*MAX_REFERENCE_PIXELS:raise ValueError('Selected raster is too large to edit.')
+        picture=ImageOps.exif_transpose(image).convert('RGB')
+    picture.thumbnail((max_side,max_side),Image.LANCZOS)
+    partial=target.with_suffix('.part');picture.save(partial,format='PNG');partial.replace(target)
+    return _regular(target)
+
+
 def prepare_reference(path,cache_dir,source_metadata=None,cancel=None):
     """Normalize actual selected bytes into an immutable content-addressed PNG."""
     source=_regular(path);raw_hash=_sha(source);image=_image(source,cancel);folder=_regular(cache_dir,False);folder.mkdir(parents=True,exist_ok=True)

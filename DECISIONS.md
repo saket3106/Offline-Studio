@@ -118,3 +118,11 @@ Only genuinely ambiguous turns ask the already-resident chat model in a backgrou
 model); without one, `image_turn_fallback` decides. The "Which image should I edit?" stop is gone: the most recent
 image is the target (a named file wins). Also fixed: router.py defined `_QUESTION` twice, so the Agent regex silently
 replaced the image-question regex.
+
+## 2026-11-12 — Edits of large results; images stay in UserData
+Found while verifying the routing fix in the real app: (1) "make the apple green" on a 3840x2160 result (25 MB PNG)
+failed with "exceeds the 20 MB reference limit". The edit canvas is <=1024 px, so `reference_workflow.working_reference`
+now hands FLUX a cached 2048 px copy when the source is over the limits (474 ms once, 18 ms cached); the limits
+themselves are unchanged. (2) The default image folder setting "generated" is relative and resolve_path() resolved it
+against Application, so 9 images (179 MB) landed in Application\generated after the UserData move. A relative image
+folder now resolves inside DATA_DIR; the 9 files and their DB paths were moved to UserData\generated.

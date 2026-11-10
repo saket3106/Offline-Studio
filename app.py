@@ -13053,14 +13053,17 @@ class FluxWorker(CancelableWorker):
 
 
             if self.action=='edit_image':
-                command.extend(['-r',str(Path(self.path))])
+                from reference_workflow import working_reference
+                # 4K results (25 MB PNG) exceed the reference limits; FLUX edits on a <=1024 canvas, so a 2048 px copy loses nothing.
+                reference=working_reference(self.path,DATA_DIR/'cache'/'edit-references')
+                command.extend(['-r',str(reference)])
                 keep=getattr(self,'config_overrides',{}).get('flux_init_strength')
                 if keep:
                     # Start from the picture itself and only partly re-noise it: layout, background and every
                     # unmentioned detail stay; the prompt changes what was asked (owner report 2026-11-09).
-                    command.extend(['-i',str(Path(self.path)),'--strength',str(float(keep))])
+                    command.extend(['-i',str(reference),'--strength',str(float(keep))])
                 from reference_workflow import conditioning_evidence
-                self.reference_evidence=conditioning_evidence({'path':str(Path(self.path))},command)
+                self.reference_evidence=conditioning_evidence({'path':str(reference)},command)
 
 
 
@@ -13686,7 +13689,9 @@ class FluxWorker(CancelableWorker):
 
 
 
-        folder=self.engine.image_path('image_output_directory',optional=True)
+        # A relative folder (the default is "generated") belongs to the user's data, never the program folder.
+        configured=str(self.engine.cfg.get('image_output_directory','') or '').strip()
+        folder=(DATA_DIR/configured) if configured and not Path(configured).expanduser().is_absolute() else self.engine.image_path('image_output_directory',optional=True)
 
 
 
