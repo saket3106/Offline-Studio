@@ -14258,6 +14258,17 @@ class SettingsDialog(QDialog):
 
 
 
+class ImageTurnWorker(QThread):
+    """Ambiguous image turn -> route, from the already-resident chat model only (router.classify_image_turn)."""
+    result=Signal(object)
+    def __init__(self,engine,text,attached,previous_prompt,parent=None):
+        super().__init__(parent);self.engine=engine;self.text=text;self.attached=attached;self.previous_prompt=previous_prompt
+        self.cancel_event=threading.Event()
+    def run(self):
+        from router import classify_image_turn
+        try:route=classify_image_turn(self.engine,self.text,self.attached,self.previous_prompt,self.cancel_event)
+        except Exception:route=None
+        self.result.emit(route)
 class VoiceIntentWorker(QThread):
     result=Signal(dict)
     def __init__(self,engine,text,parent=None):
@@ -15140,69 +15151,21 @@ class App(QMainWindow):
 
 
 
+        context_image='';image_intent=None
         if not att:
-
-
-
-            from image_pipeline import select_image_operation, ImageOperation
-
-
-
-            has_ref = bool(re.search(r'\b(?:this|that|the|my|attached|generated|previous|current)\s+(?:image|photo|picture|rendering|artwork|mustang|car|vehicle|subject|illustration)\b', text, re.I))
-
-
-
-            img_op, _ = select_image_operation(text, has_image=True)
-
-
-
-            from router import image_followup_edit
-            followup_image=image_followup_edit(text,rows)
-            if followup_image:
-                # "make the sky orange" right after a picture edits that picture (never a new generation).
-                att=followup_image;files=[att];replacement='';self._forced_image_action='edit_image'
-                logger.info('Request attachment: follow-up edit of the latest image=%s',Path(att).name)
-            elif has_ref or img_op in (ImageOperation.FAST_RECOLOR, ImageOperation.UPSCALE, ImageOperation.RESIZE, ImageOperation.CROP, ImageOperation.GENERATIVE_IMAGE_EDIT):
-
-
-
-                from conversation_memory import context_image_candidates
-
-
-
-                candidates=context_image_candidates(rows)
-
-
-
-                if len(candidates)>1:
-
-
-
-                    self.store.add(self.current,'user',text);self.store.add(self.current,'assistant','Which image should I edit? Attach the intended image or select it in the Library.');self.push_messages();return
-
-
-
-                conv_img = find_available_conversation_image(rows, text, chat_id=self.current, store=self.store)
-
-
-
-                if conv_img:
-
-
-
-                    att = conv_img
-
-
-
-                    files = [att]
-
-
-
-                    replacement = ''
-
-
-
-                    logger.info('Request attachment: reusing prior conversation image=%s', Path(att).name)
+            # An image in this chat is context, never the decision: router.image_turn_intent reads what the message asks.
+            from router import image_turn_intent,latest_assistant_image
+            latest=latest_assistant_image(rows) or ''
+            named=find_available_conversation_image(rows, text, chat_id=self.current, store=self.store) or ''
+            context_image=named if (named and re.search(r'\.(?:png|jpe?g|webp|bmp)\b',text,re.I)) else (latest or named)
+            if context_image:
+                image_intent=image_turn_intent(text,attached=False,recent=True)
+                if image_intent in ('edit','resize','crop','upscale','describe'):
+                    att=context_image;files=[att];replacement=''
+                    # The picture the assistant just showed is edited directly with FLUX (as Image Studio does).
+                    if image_intent=='edit' and latest and att==latest:self._forced_image_action='edit_image'
+                    logger.info('Request attachment: %s of the conversation image=%s',image_intent,Path(att).name)
+                else:image_intent=None
 
 
 
@@ -15263,11 +15226,34 @@ class App(QMainWindow):
 
 
 
-        self.set_busy(True,'Routing…');self.route(text,att,replacement)
+        self.set_busy(True,'Routing…');self.route(text,att,replacement,image_intent=image_intent,context_image='' if att else context_image)
 
 
 
-    def route(self,text,att,replacement=''):
+    def _classify_image_turn(self,text,att,replacement,has_img,context_image):
+        """Start the resident-model decision for an ambiguous image turn. False when no chat model is resident."""
+        runtime=getattr(self.engines,'runtime',None)
+        if not runtime or not getattr(runtime,'ready',False):return False
+        previous=''
+        try:
+            with self.store.lock:
+                row=self.store.con.execute('SELECT COALESCE(user_prompt,prompt) FROM library_images WHERE path=?',(str(Path(context_image or att).resolve()),)).fetchone()
+            previous=row[0] if row and row[0] else ''
+        except Exception:previous=''
+        worker=ImageTurnWorker(self.engines,text,has_img,previous,self);self.image_turn_worker=worker;chat=self.current
+        worker.result.connect(lambda route,w=worker,c=chat:self._image_turn_done(w,c,text,att,replacement,has_img,context_image,route))
+        worker.finished.connect(worker.deleteLater);worker.start();return True
+    def _image_turn_done(self,worker,chat,text,att,replacement,has_img,context_image,route):
+        if worker is not getattr(self,'image_turn_worker',None):return
+        self.image_turn_worker=None
+        if self.current!=chat or not self.busy:return
+        how='model'
+        if not route:
+            from router import image_turn_fallback
+            route=image_turn_fallback(text,attached=has_img,recent=bool(context_image));how='fallback'
+        logger.info('Image route by %s: %s',how,route)
+        self.route(text,att,replacement,image_intent=route,context_image=context_image)
+    def route(self,text,att,replacement='',image_intent=None,context_image=''):
 
 
 
@@ -15308,6 +15294,24 @@ class App(QMainWindow):
 
 
         has_img = bool(att and Path(att).suffix.lower() in {'.png','.jpg','.jpeg','.webp','.bmp'})
+        if image_intent is None:
+            from router import image_turn_intent,image_turn_fallback
+            image_intent=image_turn_intent(text,attached=has_img,recent=bool(context_image))
+            if image_intent=='unsure':
+                # Genuinely ambiguous: the resident chat model decides in the background (never loaded just for this).
+                if self._classify_image_turn(text,att,replacement,has_img,context_image):return
+                image_intent=image_turn_fallback(text,attached=has_img,recent=bool(context_image))
+                logger.info('Image route fallback (no resident model): %s',image_intent)
+        if image_intent=='generate':
+            # A new picture, even if an earlier image is still attached by mistake.
+            self._forced_image_action=None
+            if has_img:logger.info('New picture requested; attached image %s not used',Path(att).name)
+            self.image('generate_image',text,None);return
+        if image_intent=='chat' and has_img:att='';has_img=False
+        if image_intent in ('edit','resize','crop','upscale','describe') and not has_img and context_image:
+            att=context_image;has_img=True
+            from router import latest_assistant_image
+            if image_intent=='edit' and att==(latest_assistant_image(self.store.messages(self.current)) or ''):self._forced_image_action='edit_image'
         if has_img and getattr(self,'_forced_image_action',None):
             # Follow-up edit of the app's own latest image: FLUX reference edit directly (as Image Studio does);
             # no 6 GiB vision load is needed to understand a picture the app just made.
@@ -15332,7 +15336,16 @@ class App(QMainWindow):
 
 
 
-        img_op, op_options = select_image_operation(text, has_image=has_img)
+        if image_intent in ('resize','crop','upscale'):
+            img_op,op_options={'resize':ImageOperation.RESIZE,'crop':ImageOperation.CROP,'upscale':ImageOperation.UPSCALE}[image_intent],{}
+        elif image_intent in ('describe','chat'):
+            img_op,op_options=None,{}
+        elif image_intent=='edit':
+            img_op,op_options=select_image_operation(text, has_image=True)
+            if img_op not in (ImageOperation.FAST_RECOLOR,ImageOperation.GENERATIVE_IMAGE_EDIT):img_op,op_options=ImageOperation.GENERATIVE_IMAGE_EDIT,{}
+            if img_op==ImageOperation.GENERATIVE_IMAGE_EDIT:self._forced_image_action='edit_image'  # consumed by analyze()
+        else:
+            img_op, op_options = select_image_operation(text, has_image=has_img)
 
 
 

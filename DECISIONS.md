@@ -106,3 +106,15 @@ record. Never delete loose DLLs in Source.
 The owner wants to be the only contributor on GitHub. Removed the `Co-Authored-By: Claude` trailers from the four
 published commits (trees, authors and dates unchanged), re-tagged v1.0.0/v1.1.0 and force-pushed; the v1.1.0 release
 and its zip are untouched. From now on no commit carries a co-author or "Generated with" line.
+
+## 2026-11-12 — Image turns are decided by what the message asks, not by an image being present
+Owner report: after an image was generated (or left attached by "Create variation"), later prompts were edited into it,
+and long new prompts containing "scale", "crop" or "enhance" answered "Resizing requires an image". Causes: send()
+probed `select_image_operation(text, has_image=True)` and a loose "the/this + noun" regex to reuse the last image; the
+selector picked crop/resize/upscale from any such word even with no image; an attached image always went to vision.
+Now `router.image_turn_intent` returns generate/edit/resize/crop/upscale/describe/chat from the wording (µs, no model);
+crop/resize/upscale need the command itself and an image; a new-picture request always generates (attachment ignored).
+Only genuinely ambiguous turns ask the already-resident chat model in a background thread (3 s budget, never loads a
+model); without one, `image_turn_fallback` decides. The "Which image should I edit?" stop is gone: the most recent
+image is the target (a named file wins). Also fixed: router.py defined `_QUESTION` twice, so the Agent regex silently
+replaced the image-question regex.

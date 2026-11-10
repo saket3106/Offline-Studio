@@ -18,6 +18,7 @@ class HandoffAcceptanceTests(unittest.TestCase):
         cls.root = Path(__file__).resolve().parent.parent.parent
         cls.offline_gpt_dir = (cls.root / "Application") if (cls.root / "Application").exists() else (cls.root / "Offline GPT")
         mustang_candidates = [
+            cls.root / "UserData" / "generated" / "flux_20261010_151912_c327d0.png",
             cls.offline_gpt_dir / "generated" / "flux_20261010_151912_c327d0.png",
             cls.root / "Offline GPT" / "generated" / "flux_20261010_151912_c327d0.png",
             cls.root / "Application" / "generated" / "flux_20261010_151912_c327d0.png",

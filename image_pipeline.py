@@ -169,16 +169,16 @@ def select_image_operation(prompt: str, has_image: bool = False) -> tuple[ImageO
     if intent:
         return ImageOperation.FAST_RECOLOR, intent
 
-    # 3. CROP
-    if re.search(r'\b(?:crop|trim|cut\s+out|cut\s+borders?)\b', operative):
+    # 3-5. Crop / resize / upscale act on an image; without one these words are part of a prompt.
+    if has_image and re.search(r'\b(?:crop|trim|cut\s+out|cut\s+borders?)\b', operative):
         return ImageOperation.CROP, {'action': 'crop'}
 
     # 4. RESIZE (Pixel dimensions / aspect or resize command)
-    if re.search(r'\b(?:resize|scale)\b', operative) and not re.search(r'\b(?:upscale|super[- ]resolution)\b', operative):
+    if has_image and re.search(r'\b(?:resize|scale)\b', operative) and not re.search(r'\b(?:upscale|super[- ]resolution)\b', operative):
         return ImageOperation.RESIZE, {'action': 'resize'}
 
     # 5. UPSCALE (AI super-resolution / 4K enhancement)
-    if re.search(r'\b(?:upscale|super[- ]resolution|4k\s+upscale|upscale\s+to\s+4k)\b', operative) or (
+    if has_image and re.search(r'\b(?:upscale|super[- ]resolution|4k\s+upscale|upscale\s+to\s+4k)\b', operative) or (
         has_image and re.search(r'\b(?:enhance|sharpen|denoise|restore)\b', operative)
     ):
         return ImageOperation.UPSCALE, {'action': 'upscale'}
