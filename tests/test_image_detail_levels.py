@@ -39,6 +39,12 @@ class DetailLevelTests(unittest.TestCase):
         self.assertEqual(sizes(plan('a 1024x576 city', 'high'))[1], (1024, 576))
         self.assertTrue(plan('a 4k city', 'extreme')['detail_refine'])
 
+    def test_8k_and_5k_mean_the_largest_output_not_the_default(self):
+        # "volumetric fog, 8k detail" was saved at 1280x720 while the same prompt without "8k" got 4K.
+        for word in ('8k', '5k'):
+            self.assertEqual(sizes(plan(f'a neon city at night, {word} detail', 'high'))[1], (3840, 2160))
+            self.assertEqual(sizes(plan(f'a neon city at night, {word} detail', 'standard'))[1], (3840, 2160))
+
     def test_prompt_words_raise_level_only_with_fast_model(self):
         self.assertEqual(image_detail_level('a fox, extremely detailed', dict(FAST)), 'extreme')
         self.assertEqual(image_detail_level('a highly detailed fox', dict(FAST)), 'high')

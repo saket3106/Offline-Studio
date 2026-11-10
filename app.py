@@ -3242,7 +3242,8 @@ def parse_image_resolution_intent(prompt: str, cfg: dict = None, export_option: 
 
 
 
-    is_4k = bool(re.search(r'\b(4k|uhd|2160p|ultra\s+hd|3840\s*[*x×]\s*2160)\b', low)) or export_opt in ('4k', 'uhd', '3840x2160')
+    # 4K is the largest output: "5k"/"8k" ask for the most detail, never the small default (owner prompt 2026-11-11).
+    is_4k = bool(re.search(r'\b(4k|5k|8k|uhd|2160p|ultra\s+hd|3840\s*[*x×]\s*2160)\b', low)) or export_opt in ('4k', 'uhd', '3840x2160')
 
 
 
