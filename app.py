@@ -325,7 +325,7 @@ from intelligence import (analyze_request, build_correction_messages, build_task
 
 
 
-from memory_manager import calculate_dynamic_context_budget, estimate_tokens, fit_text_to_token_budget
+from memory_manager import calculate_dynamic_context_budget, estimate_tokens, fit_text_to_token_budget, stable_history_window
 
 
 
@@ -16383,7 +16383,8 @@ class App(QMainWindow):
 
 
 
-        selected_rows=[] if compact else rows[-11:-1]
+        # The window's start moves in steps so the server reuses the cached history prefix across turns.
+        selected_rows=[] if compact else stable_history_window(rows[:-1])
 
 
 

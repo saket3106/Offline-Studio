@@ -204,6 +204,22 @@ def length_target_output_tokens(requested_words: int, total_context: int | None 
     return budget
 
 
+def stable_history_window(prior: list, keep: int = 8, step: int = 6) -> list:
+    """The recent part of a chat to send with the next message, chosen so its first message stays put.
+
+    A window of "the last N messages" starts one message later on every turn, so the prompt text after the
+    system prompt changes each time and the local server must re-read the whole history (measured: 18 of
+    128 turns reused the cache, first token ~1.4 s). Here the start moves forward in jumps of `step`
+    messages, so the same prefix is reused for step/2 turns in a row. Every message from the start on is
+    kept: between `keep` and `keep + step - 1` messages once the chat is long, all of them before that.
+    `step` is even, so the window always starts on the same role it would in a full history."""
+    total = len(prior)
+    if total <= keep + step - 1:
+        return list(prior)
+    start = ((total - keep) // step) * step
+    return list(prior[start:])
+
+
 def calculate_dynamic_context_budget(
     category: str = "normal",
     prompt_text: str = "",

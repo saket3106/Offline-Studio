@@ -126,3 +126,14 @@ now hands FLUX a cached 2048 px copy when the source is over the limits (474 ms 
 themselves are unchanged. (2) The default image folder setting "generated" is relative and resolve_path() resolved it
 against Application, so 9 images (179 MB) landed in Application\generated after the UserData move. A relative image
 folder now resolves inside DATA_DIR; the 9 files and their DB paths were moved to UserData\generated.
+
+## 2026-11-11 — History window moves in steps so the prompt cache is reused
+turn_trace showed 18 of 128 chat turns reusing llama-server's prompt cache (first token median 1.4 s, prefill
+~1150 tokens). One cause: the history was "the last 10 messages", whose first message changes every turn, so
+everything after the system prompt was re-read. `memory_manager.stable_history_window` keeps all messages until
+13, then starts the window on a multiple of 6 (8-13 newest messages kept), so its start stays put for 3 turns.
+Replaying 506 real turns: prefix reusable 52% -> 66% (ceiling 72%: the rest change the system prompt).
+Not done yet, by design: moving per-turn context (route profile, memory, evidence, length line) out of the system
+prompt. The user turn is stored without that block, so the next turn would diverge at the previous user message and
+the turns that already hit the cache would get slower; multi-task continuation also reads its task list from the
+system message. Needs a design that keeps the per-chat system prompt identical (e.g. per-chat anchored context).
