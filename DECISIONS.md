@@ -137,3 +137,14 @@ Not done yet, by design: moving per-turn context (route profile, memory, evidenc
 prompt. The user turn is stored without that block, so the next turn would diverge at the previous user message and
 the turns that already hit the cache would get slower; multi-task continuation also reads its task list from the
 system message. Needs a design that keeps the per-chat system prompt identical (e.g. per-chat anchored context).
+
+## 2026-11-13 — Turn 2 no longer re-reads the conversation
+Real app: the second message of every chat reused 0 cached tokens (~1 s first token). Two causes, both fixed:
+(1) the identity lines said "Model state: selected and pending load" while the first reply's prompt was built and
+"loaded" afterwards, and a loaded runtime could report its own name/path instead of the selected file's. The state
+line is gone (the model only reads it while loaded) and the same file always renders the same identity.
+(2) the chat-title request (and intent classifiers, chat switches) use the same server slot. llama-server saves the
+previous conversation to its host prompt cache, but the app capped that at 128 MB and a Qwen3.5 state is ~150-230 MB
+("prompt state size 229 MiB exceeds cache size limit", so it was skipped). The cap now follows free RAM: 256 MB below
+3.5 GB, 512 MB below 6 GB, else 1 GB (2 GB on Performance with 8 GB free; Eco max 256 MB). It is a ceiling, filled
+only as states are saved. Probe after a title request: turn 2 prefill 933 ms -> 161 ms.

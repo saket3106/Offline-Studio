@@ -1196,13 +1196,21 @@ def _local_memory_profile(memory, requested_context, hardware_profile='balanced'
 
     load_mode = "none" if total_ram is not None and total_ram <= 18 * gib else "mmap"
 
-
+    # Host prompt cache (a ceiling, filled only as prompts are saved). A Qwen3.5 conversation state is ~150-230 MB
+    # (recurrent state + checkpoints), so the old fixed 128 MB never held one: after the chat-title or an intent
+    # request the next turn re-read the whole chat (probe: 933 ms -> 161 ms with room for it).
+    if available_ram < int(3.5 * gib):
+        cache_ram_mb = 256
+    elif available_ram < 6 * gib:
+        cache_ram_mb = 512
+    else:
+        cache_ram_mb = 2048 if hw_profile == 'performance' and available_ram >= 8 * gib else 1024
+    if hw_profile == 'eco':
+        cache_ram_mb = min(cache_ram_mb, 256)
 
     return {
 
-
-
-        "context": context, "batch": batch, "threads": threads,
+        "context": context, "batch": batch, "threads": threads, "cache_ram_mb": cache_ram_mb,
 
 
 
@@ -3692,7 +3700,7 @@ class _LocalLlamaServer:
 
 
 
-            cache_ram=max(0,min(512,int((memory_profile or {}).get('cache_ram_mb',128))))
+            cache_ram=max(0,min(4096,int((memory_profile or {}).get('cache_ram_mb',128))))
 
 
 
@@ -10043,6 +10051,13 @@ class EngineManager:
         path = (status.get("runtimeModelPath") if loaded and status.get("runtimeModelPath")
 
                 else status.get("modelPath")) or ""
+
+        # The same file loaded or not must render the same identity: the prompt's first lines differing between the
+        # first reply (model still loading) and the next made the server re-read the whole conversation.
+        if loaded and status.get("modelPath") and status.get("runtimeModelPath") and os.path.normcase(
+                str(resolve_path(str(status["modelPath"])))) == os.path.normcase(str(resolve_path(str(status["runtimeModelPath"])))):
+            display = status.get("modelName") or display
+            path = status.get("modelPath")
 
         # This prompt describes the next request, not a leftover loaded runtime.
 
