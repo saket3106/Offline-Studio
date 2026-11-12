@@ -301,7 +301,12 @@ def route_request(text: str, has_document: bool = False, rag_context: str = "") 
     logic_eval = None if classification_only else analyze_logic(original)
 
     # Check intents
-    wants_datetime = not classification_only and bool(re.search(r"\b(?:what time is it|what is the time|current time|today's date|what date is it|what day is it)\b", low))
+    # "what is the time difference/zone/complexity…" is knowledge, not a clock reading (real app 2026-11-13: it loaded
+    # the tool prompt, 2.4k tokens, 3.7 s first token).
+    wants_datetime = not classification_only and bool(re.search(
+        r"\b(?:what time is it|what is the time(?!\s+(?:difference|differences|zone|zones|complexity|limit|limits|frame|"
+        r"span|period|gap|signature|constant|scale|value|needed|required|taken|it takes|cost)\b)|current time|today's date|"
+        r"what date is it|what day is it)\b", low))
     wants_system_info = not classification_only and bool(re.search(r"\b(?:system info|specs?|ram status|how much ram|hardware specs?|pc specs?)\b", low))
     # "What are your capabilities?" is conversation; it injected every tool schema (2,145-token
     # prompt, 2.4 s before the first spoken word in Live Voice).
@@ -660,9 +665,13 @@ def get_relevant_tools(analysis: dict[str, Any] | None = None, prompt_text: str 
     if (route_target == "CALCULATOR" or category in {"math", "probability"}) and not has_python:
         tools.append("calculator")
 
-    if analysis.get("wants_datetime") or "time" in p_low or "date" in p_low or "today" in p_low or "clock" in p_low:
+    # Substring checks ("os" in "most", "ram" in "program", "today" in "how are you today") attached tool schemas to
+    # 16% of ordinary chat turns (83 of 514 measured 2026-11-13), making prompts larger and breaking the prompt cache.
+    if analysis.get("wants_datetime") or re.search(r"\b(?:what time|current (?:time|date)|today'?s date|what date|what day|clock)\b", p_low):
         tools.append("datetime")
-    if analysis.get("wants_system_info") or "system" in p_low or "ram" in p_low or "hardware" in p_low or "specs" in p_low or "os" in p_low:
+    if analysis.get("wants_system_info") or re.search(
+            r"\b(?:system (?:info\w*|specs?|status|usage)|hardware|specs?|how much (?:ram|memory)|ram usage|cpu usage|"
+            r"gpu usage|operating system|os version|windows version)\b", p_low):
         tools.append("system_info")
 
     if route_target == "TOOL" or category == "tool_required":
