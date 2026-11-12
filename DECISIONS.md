@@ -157,3 +157,13 @@ built from retrieved records, it is now a short list: who said it, a readable da
 note on what the record does and does not show ("asked for; not confirmed as done", "as reported; not independently
 verified", "recorded by the app"), and a numbered source chip that opens the message. Code lines and one-word
 fragments are left out (with a count). The honesty rules are unchanged; the diagnostic reference stays in metrics.
+
+## 2026-11-13 — Stop a self-arguing draft; trim history by size, rarely
+Real app 13b: "Which is further north?" produced 800 tokens of "Wait, let me re-verify… No, that is…" in the visible
+reply (Qwen3.5 thinks only when Deep mode enables thinking). A draft with 3+ self-correction phrases (code ignored,
+writing/creative/voice excluded) is now stopped through a per-call cancel flag that never sets the user's Stop, and the
+same request is asked once more with hidden thinking (effort high, ≥2400 tokens); the clean answer replaces the draft.
+Over 837 stored replies only the real case matches. Separately, the history window now keeps everything until it
+exceeds half the context, then drops the oldest messages down to 40% of that budget. The start is replayed from the
+first message, so it is identical every turn until the next trim. 24 real chats: re-reads 52 → 9, re-read tokens -82%.
+Accepted cost: a stopped draft costs one extra, slower (thinking) answer; prompts carry more history (cached, so free).

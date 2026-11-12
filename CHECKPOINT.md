@@ -3,19 +3,19 @@
 ## MISSION / CURRENT PHASE
 User mission: the app works smartly and professionally like online AI apps and like local personal
 assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. In-place install authorized.
-Phase: speed + polish audit. Route-20261113b installed (exe 5277936d…). Data in UserData; Backups keep 2.
+Phase: speed + polish audit. Route-20261113c installed (exe c3da9c6a…). Data in UserData; Backups keep 2.
 
 ## NEXT STEP (exact, executable)
-13b probe: "Give one famous dish from each country." hit the 800-token output reserve (stop=length, 24.9 s), and each
-window step (every 6 turns) re-reads ~1.5k tokens (2.6 s). Fix both. Probe: scratchpad cache_turns.sh. Git: `main`; keep Source/VCRUNTIME140*.dll / MSVCP140.dll.
+Owner asked (13c) for Codex/Claude-Code-like local agent + unlimited use: agent caps 8 steps/180 s, no command runner, edits
+to copies, 4k context. Plan given to owner; await go-ahead. 13c: 9B said JP-FR "1 hour" (UTC+9 vs +1). Git `main`; keep VC DLLs.
 
 ## DONE
+- Rambling draft (3+ self-corrections) stopped → one retry with hidden thinking · 548b747 · UNIT-TESTED (worker e2e; 1/837 stored
+  replies flagged = the real case) · token history window (half context, trims to 40%) · VERIFIED-REAL 13c (12 turns, 0 re-reads, ≤571 ms)
 - Readable chat summaries / past-chat answers (prose, dates, source chips; no claim codes or Diagnostic) · 2b1fcda; clock/system
   tools only for real clock/system questions · 6655b23 · VERIFIED-REAL 13b (summary: one sentence, first token 5.2 s → 595 ms)
-- Turn 2 keeps the cache (identity without load state; host prompt cache sized by free RAM, 1 GB here) · 20408a0 ·
-  VERIFIED-REAL 13a cold start: turn 2 reused 644 tokens, first token ~1000 → 294 ms; turns 3-10 230-390 ms
-- Stable history window (start moves every 3 turns) · b70ba67 · VERIFIED-REAL 12d (turns 7-10 first token 634-825 → 250-332 ms
-  except the window step 638 ms; replay of 506 real turns: reusable prefix 52% → 66%). 5K/8K prompts → 4K output · f3e2423 · UNIT-TESTED
+- Turn 2 keeps the cache (identity w/o load state; prompt cache by free RAM) · 20408a0 · VERIFIED-REAL 13a (turn 2 ~1000 → 294 ms)
+- Stable history window (superseded by 13c token window) · b70ba67 · VERIFIED-REAL 12d. 5K/8K prompts → 4K output · f3e2423 · UNIT-TESTED
 - Image turns routed by intent (generate/edit/ops/describe/chat; model asked when unsure) · 911f8f6 · VERIFIED-REAL 12c
   (new chat "draw…" → image; "make the apple green" → real edit 25 s; attached image + new prompt → new image; long
   prompt with scale/crop/enhance → new image; chat question → text). 4K edits via 2048 px working copy · 2b70120 · VERIFIED-REAL
