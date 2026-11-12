@@ -3,15 +3,16 @@
 ## MISSION / CURRENT PHASE
 User mission: the app works smartly and professionally like online AI apps and like local personal
 assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. In-place install authorized.
-Phase: speed + polish audit. Route-20261112d installed (exe 80bbc046…). Data in UserData; Backups keep 2.
+Phase: speed + polish audit. Route-20261113a installed (exe 79464109…). Data in UserData; Backups keep 2.
 
 ## NEXT STEP (exact, executable)
-Stable system prompt per chat: memory prefs are looked up per question (app.py:16028 context_fast(text)) and tool/
-category branches reshape the system prompt → cache miss (turn 2 "And of France?" reused 0). Pin prefs per chat; see
-DECISIONS 2026-11-11 for why per-turn context must not move into the stored user turn. Probe: scratchpad cache_turns.sh.
-Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build inputs).
+"Summarize our chat in one sentence" pulls 3.2k tokens of memory evidence (5.2 s first token) for a 12-message chat:
+answer current-chat summaries from the chat itself. Tool turns (datetime) still rebuild the prompt (2.4k, 3.7 s).
+Probe: scratchpad cache_turns.sh (real app, CDP). Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll.
 
 ## DONE
+- Turn 2 keeps the cache (identity without load state; host prompt cache sized by free RAM, 1 GB here) · 20408a0 ·
+  VERIFIED-REAL 13a cold start: turn 2 reused 644 tokens, first token ~1000 → 294 ms; turns 3-10 230-390 ms
 - Stable history window (start moves every 3 turns) · b70ba67 · VERIFIED-REAL 12d (turns 7-10 first token 634-825 → 250-332 ms
   except the window step 638 ms; replay of 506 real turns: reusable prefix 52% → 66%). 5K/8K prompts → 4K output · f3e2423 · UNIT-TESTED
 - Image turns routed by intent (generate/edit/ops/describe/chat; model asked when unsure) · 911f8f6 · VERIFIED-REAL 12c
@@ -32,8 +33,6 @@ Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll (build
 - Declutter + retitle (5 chats, backup offline_gpt-pre-retitle-20261107) · 3c85292, 556e434 · VERIFIED-REAL
 - Design layer: single-line composer, Inter (inlined), calm canvas, message rhythm · b6f1b66, 0c34b3a · VERIFIED-REAL
 - Library/Image Studio/Settings design pass · 3d2a2d3 · VERIFIED-REAL (chips no clip, 1-line card prompts, dark+light shots)
-- Installed: Design-20261107u exe eb0ecee8… · 177a1a2 · 343 chats backed up, uiMismatches [] ·
-  rollback: python -B tools/release_inplace.py rollback --name Design-20261107u
 - Barge-in keeps the interrupting words (PcmCarry: 1.5 s pre-roll + recording until next capture) · 1eb3472, 1495a5d ·
   VERIFIED-REAL via internal virtual mic (qa/vmic_barge_in.mjs): fire 395 ms, carry 1700 ms, full sentence transcribed
 - Deep AMOLED black dark palette restored (canvas #000, sidebar #080808) · 344cd44 · VERIFIED-REAL computed colours
