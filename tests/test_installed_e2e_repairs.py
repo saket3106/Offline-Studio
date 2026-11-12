@@ -33,7 +33,7 @@ class InstalledInferenceRegressions(unittest.TestCase):
         analysis=analyze_request(prompt);analysis.update(memory_request=True,memory_sources=[source],max_retries=0)
         worker=ChatWorker('local',[{'role':'user','content':prompt}],Engine(),analysis)
         final=[];failed=[];metrics=[];worker.done.connect(final.append);worker.failed.connect(failed.append);worker.metrics.connect(metrics.append);worker.run()
-        self.assertFalse(failed);self.assertEqual(len(final),1);self.assertIn('partial evidence view',final[0]);self.assertNotIn('instant response caching',final[0]);self.assertIn('M77',final[0]);self.assertEqual(metrics[-1]['validation_status'],'partial')
+        self.assertFalse(failed);self.assertEqual(len(final),1);self.assertIn('remains unresolved',final[0]);self.assertNotIn('instant response caching',final[0]);self.assertIn('M77',final[0]);self.assertEqual(metrics[-1]['validation_status'],'partial')
     def test_numbered_markdown_slide_headings_remain_separate_slides(self):
         from document_tools import create_document_from_markdown
         from pptx import Presentation

@@ -84,6 +84,12 @@ def memory_intent(text,recent=()):
         if prev_sources:query+=' '+' '.join(prev_sources[-3:])
     if explicit and not terms(query):timeline=True
     current_only=bool(re.search(r'\b(?:this|current) (?:chat|conversation)\b',value))
+    # "Summarize our chat" / "what was our conversation about" mean this chat, like "this conversation": searching every
+    # past chat loaded 3.2k tokens of other chats' evidence (5.2 s first token, real app 2026-11-13). Plural or
+    # past-time wording ("our chats", "our previous conversation", "last week") still searches history.
+    past=r'\b(?:previous\w*|earlier|past|prior|old\w*|other|all|histor\w*|remember|recall|yesterday|before|ago|last (?:time|week|month|year|night|session))\b'
+    if not current_only and re.search(r'\b(?:our|the) (?:chat|conversation)\b(?!s)',value) and not re.search(past,value):
+        current_only=True;explicit=False;timeline=False
     generative=bool(re.match(r'^(?:please\s+)?(?:write|design|create|generate|implement|debug|refactor)\b',value) or re.search(r'\band\s+(?:then\s+)?(?:write|design|create|generate|implement|debug|refactor)\b',value))
     overview=explicit and not timeline and not generative and bool(re.search(r'\b(?:summarize|summary|overview|recap)\b',value)) and bool(re.search(r'\b(?:improvements?|development|changes|work)\b',value))
     return {'retrieve':explicit,'historyOnly':explicit and not generative,'timeline':timeline,'overview':overview,'followup':explicit and anaphoric and not generative,'query':query,'currentOnly':current_only}
@@ -419,36 +425,112 @@ def history_claim_ledger(sources):
             'scope':'Retrieved original excerpts only; not complete conversation history.','semanticCertification':False}
 
 
+_MONTHS=('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')
+_STATUS_NOTES={'REQUESTED':'asked for; not confirmed as done','ATTEMPTED':'attempted; success not confirmed',
+               'DENIED':'said it was not done','REPORTED':'as reported; not independently verified',
+               'CONFIRMED':'recorded by the app','UNRESOLVED':'unconfirmed'}
+
+
+def readable_history_date(value):
+    """'2026-11-07T21:51:27+05:30' -> '7 Nov 2026'; anything else is returned unchanged."""
+    match=re.match(r'\s*((?:19|20)\d\d)-(\d{2})-(\d{2})',str(value or ''))
+    if not match or not 1<=int(match[2])<=12:return str(value or 'an unknown date')
+    return str(int(match[3]))+' '+_MONTHS[int(match[2])-1]+' '+match[1]
+
+
+def _history_speaker(role):
+    return {'user':'You','note':'Your note','assistant':'Offline Studio','application':'Offline Studio'}.get(str(role or '').lower(),'Earlier chat')
+
+
+def history_quote_is_noise(quote):
+    """Code lines, fences and one-word fragments say nothing on their own in a prose answer."""
+    text=str(quote or '').strip()
+    if re.match(r'(?:`{3}|~{3}|def |class |import |from \S+ import |return\b|print\(|#include|function |const |let |var |SELECT |</?\w+[ >])',text,re.I):return True
+    if re.fullmatch(r'[\w.\[\]]+\s*(?:=|\+=|-=|==|\()\s*.*',text) and not re.search(r'[A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,}',text):return True
+    words=re.findall(r"[A-Za-z][A-Za-z'’-]*",text)
+    if len(words)<2:return True
+    symbols=sum(1 for ch in text if ch in '{}[]()<>=;:`$\\|_#*/')
+    return symbols>max(6,len(text)*.12)
+
+
+def _history_quote(text,limit=240):
+    text=re.sub(r'\s+',' ',str(text)).strip()
+    shortened=len(text)>limit
+    if shortened:
+        cut=text[:limit];word_cut=cut.rsplit(' ',1)[0]
+        text=(word_cut if len(word_cut)>limit*.7 else cut).rstrip(' ,;:')+'…'
+    text=text.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
+    return re.sub(r'([\\\[\]()*_`!#|])',r'\\\1',text),shortened
+
+
+def _history_citation(source):
+    """Shown as a numbered source chip in the chat; the link opens the original message."""
+    url=str(source.get('url',''))
+    if re.fullmatch(r'offlinegpt://chat/[\w-]+\?message=\d+',url):return '['+source['id']+']('+url+')'
+    return '['+source['id']+']'
+
+
 def history_claim_evidence_view(sources,reference='',ledger=None):
-    """Source-linked partial evidence, not unchecked generated synthesis."""
+    """Readable, source-linked answer from original messages — never unchecked model prose.
+
+    Each item keeps the speaker's own words, a clickable date that opens the
+    original message, and a plain note about what the record does and does not
+    establish. Code fragments and one-word spans are left out of the prose.
+    The diagnostic reference stays in the turn metrics, not in the answer.
+    """
     ledger=ledger if ledger is not None else history_claim_ledger(sources)
     by_id={s['id']:s for s in sources if s.get('id')}
-    parts=['Retrieved claim-level evidence — a partial evidence view, not a verified account of every project change.']
-    parts.append('Showing '+str(len(ledger['sourceIds']))+' of '+str(len(by_id))+' retrieved sources. Speaker reports remain reports; confirmed operation metadata does not establish a completed software improvement.')
-    labels={'REQUESTED':'Requested; completion not established','ATTEMPTED':'Attempted; success not established',
-            'DENIED':'Denied change report','REPORTED':'Speaker-reported; not independently verified',
-            'CONFIRMED':'Application-recorded operation metadata','UNRESOLVED':'Unresolved evidence; not completion proof'}
-    for claim in ledger['claims']:
-        source=by_id[claim['sourceId']];url=str(source.get('url',''))
-        citation='['+claim['sourceId']+']'
-        if re.fullmatch(r'offlinegpt://chat/[\w-]+\?message=\d+',url):citation+='('+url+')'
-        parts.append('**'+claim['id']+' — '+labels[claim['status']]+'**\n\n'+citation+' — '+str(claim['date'])+' — '+claim['speaker'])
-        if claim['kind']=='operation_duration':
-            parts.append('Recorded operation duration: '+str(claim['durationSeconds'])+' seconds. No comparable optimization benchmark is implied.')
-        else:
-            quote=claim['quote'][:360].replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
-            quote=re.sub(r'([\\\[\]()*_`!#|])',r'\\\1',quote)
-            parts.append('> '+quote+(' … [excerpt shortened]' if len(claim['quote'])>360 else ''))
-        if claim['supersededBy']:parts.append('Earlier report superseded by explicit reported correction: '+', '.join(claim['supersededBy'])+'. Original evidence retained.')
+    groups={}
+    for claim in ledger['claims']:groups.setdefault(claim['sourceId'],[]).append(claim)
+    items=[];skipped=0;shortened_any=False
+    for source_id in ledger['sourceIds']:
+        source=by_id.get(source_id);claims=groups.get(source_id,[])
+        if not source or not claims:continue
+        pieces=[]
+        for claim in claims:
+            if claim['kind']=='operation_duration':
+                pieces.append('the app recorded this operation taking '+str(claim['durationSeconds'])+' seconds *(a single recorded run — no comparable optimization benchmark is implied)*')
+                continue
+            if history_quote_is_noise(claim['quote']):skipped+=1;continue
+            quote,shortened=_history_quote(claim['quote']);shortened_any|=shortened
+            note=_STATUS_NOTES[claim['status']]
+            if claim['supersededBy']:note+='; later corrected — see below'
+            pieces.append('“'+quote+'” *('+note+')*')
+        if not pieces:continue
+        speaker=_history_speaker(claims[0].get('speaker') or source.get('role'))
+        head='- **'+speaker+'**, '+readable_history_date(claims[0].get('date') or source.get('date'))+': '
+        cite=' '+_history_citation(source)
+        if len(pieces)==1:items.append(head+pieces[0]+cite)
+        # Every quoted line carries its own source chip, so no claim is left uncited.
+        else:items.append(head.rstrip()+'\n'+'\n'.join('  - '+piece+cite for piece in pieces[:4])+('\n  - …and '+str(len(pieces)-4)+' more points in that message.' if len(pieces)>4 else ''))
+    claim_by_id={c['id']:c for c in ledger['claims']}
+    def where(claim_id):
+        claim=claim_by_id.get(claim_id)
+        if not claim:return 'another message'
+        source=by_id.get(claim['sourceId'],{'id':claim['sourceId']})
+        figures=', '.join(str(m['seconds']).rstrip('0').rstrip('.')+' seconds' for m in claim.get('measurements',[]))
+        return (figures+' on ' if figures else 'the message from ')+readable_history_date(claim.get('date'))+' '+_history_citation(source)
+    notes=[]
     for relation in ledger['relations']:
-        if relation['kind']=='EXPLICIT_REPORTED_CORRECTION':parts.append('Reported correction: '+relation['later']+' corrects '+relation['earlier']+'. This is report precedence, not independent measurement.')
-        elif relation['kind']=='DIFFERING_REPORTS':parts.append('Unresolved comparison: '+', '.join(relation['earlier'])+' and '+relation['later']+'. '+relation['scope'])
-        else:parts.append('Unresolved correction target: '+relation['later']+'. '+('Possible earlier claims: '+', '.join(relation['possibleEarlier'])+'. ' if relation['possibleEarlier'] else 'No uniquely matched earlier report is available. ')+'No earlier report was silently overwritten.')
-    parts.append('Completed software changes or causal speedups unsupported by the supplied originals remain unresolved. Supported statements and operation records above remain available.')
-    if ledger['omittedSourceIds']:parts.append('Retrieved source IDs not fully displayed: '+', '.join(ledger['omittedSourceIds'])+'.')
-    if ledger['truncatedSourceIds']:parts.append('Source excerpts truncated by the bounded evidence view: '+', '.join(ledger['truncatedSourceIds'])+'.')
-    if ledger['displayTruncatedSourceIds']:parts.append('Shortened quote previews: '+', '.join(ledger['displayTruncatedSourceIds'])+'. Display coverage is partial; original source links remain available.')
-    if reference:parts.append('Diagnostic: '+reference)
+        if relation['kind']=='EXPLICIT_REPORTED_CORRECTION':
+            notes.append('The figure of '+where(relation['later'])+' corrects the earlier '+where(relation['earlier'])+'. That is a reported correction, not independent measurement.')
+        elif relation['kind']=='DIFFERING_REPORTS':
+            notes.append('Different figures were reported in '+', '.join(where(i) for i in relation['earlier'])+' and '+where(relation['later'])+'. They may come from different runs, so I can’t say which one is right.')
+        else:
+            notes.append(where(relation['later']).capitalize()+' is described as a correction, but I couldn’t tell which earlier report it replaces, so both are kept.')
+    if not items:
+        return ('I couldn’t find anything in your earlier chats that answers this clearly, so completed changes or speed-ups remain unresolved.'
+                +(' The matching messages were mostly code or short fragments.' if skipped else '')
+                +' Try naming the topic, file or rough date you have in mind.')
+    total=len(by_id);shown=len(ledger['sourceIds'])
+    parts=['Here’s what your earlier chats actually say about this — '+('the most relevant '+str(shown)+' of '+str(total)+' matching messages' if shown<total else str(shown)+' matching message'+('s' if shown!=1 else ''))+'. Tap a source number to open the original message.',
+           '\n'.join(items)]
+    if notes:parts.append('**About the figures**\n\n'+'\n'.join('- '+n for n in notes))
+    closing=['Anything not quoted above — including whether changes were finished or made things faster — remains unresolved from these records.']
+    if skipped:closing.append('I left out '+str(skipped)+' code snippet'+('s' if skipped!=1 else '')+' or short fragment'+('s' if skipped!=1 else '')+'.')
+    if ledger['omittedSourceIds'] or ledger['truncatedSourceIds'] or ledger['displayTruncatedSourceIds'] or shortened_any:
+        closing.append('Some messages are shortened or not shown, so display coverage is partial; ask about a narrower topic or period to see more.')
+    parts.append(' '.join(closing))
     return '\n\n'.join(parts)
 
 
@@ -456,16 +538,22 @@ def history_evidence_fallback(sources,reference=''):
     """Return actual evidence when synthesis fails; never invent a recap."""
     meaningful=[s for s in sources if s.get('excerpt','').strip() and not re.fullmatch(r'\s*(?:hello|hi|hey|thanks|thank you)(?: there| everyone)?[!.\s]*',s.get('excerpt',''),re.I) and not re.match(r'\s*capabilities of\b',s.get('excerpt',''),re.I) and not (s.get('evidenceKind')=='USER_REQUEST' and memory_intent(s.get('excerpt','')).get('historyOnly')) and not re.search(r'\byou are (?:being (?:evaluated|tested)|undergoing)\b',s.get('excerpt',''),re.I)]
     selected=select_history_evidence(meaningful,12)
-    if not selected:return "I couldn't retrieve sufficient original project-change or benchmark evidence to verify which improvements worked."+(' Diagnostic: '+reference if reference else '')
-    parts=["I couldn't reliably complete a grounded summary. Here are the retrieved original records; this is a partial evidence view, not a verified account of every change."+(' Diagnostic: '+reference if reference else '')]
-    parts.append('Showing '+str(len(selected))+' of '+str(len({s['id'] for s in meaningful}))+' relevant retrieved records. Source excerpts may be shortened; this is not a complete search of all conversations.')
+    if not selected:return 'I couldn’t find anything in your earlier chats that shows which changes or improvements actually worked. Try naming the topic, file or rough date you have in mind.'
+    total=len({s['id'] for s in meaningful})
+    parts=['I couldn’t put together a reliable summary, so here are the original messages I found ('+str(len(selected))+' of '+str(total)+'). This is a partial evidence view, not a complete search of all your chats. Tap a source number to open the original message.']
+    items=[]
     for source in selected:
-        label=source.get('evidenceKind','UNVERIFIED_RECORD')
-        parts.append('['+source['id']+']('+source['url']+') — '+str(source.get('date','unknown date'))+' — '+label+'\n\n'+ '\n'.join('> '+line for line in source.get('excerpt','')[:500].splitlines()))
-        if source.get('runtimeFacts') and label in {'APPLICATION_IMAGE_TELEMETRY','APPLICATION_IMAGE_COMPLETION_RECORD','APPLICATION_TOOL_RECORD'}:
-            parts.append('Application-recorded operation metadata: `'+json.dumps(source['runtimeFacts'],ensure_ascii=False)[:1000]+'`. Individual timings do not establish comparable benchmarks or causal improvements.')
+        kind=source.get('evidenceKind','UNVERIFIED_RECORD')
+        text,_=_history_quote(source.get('excerpt',''),320)
+        line='- **'+_history_speaker(source.get('role') or ('user' if kind.startswith('USER_') else 'application'))+'**, '+readable_history_date(source.get('date'))+': “'+text+'” '+_history_citation(source)+'.'
+        facts=source.get('runtimeFacts') if isinstance(source.get('runtimeFacts'),dict) else {}
+        duration=facts.get('duration_seconds')
+        if kind in {'APPLICATION_IMAGE_TELEMETRY','APPLICATION_IMAGE_COMPLETION_RECORD','APPLICATION_TOOL_RECORD'} and type(duration) in (int,float) and math.isfinite(duration):
+            line+=' The app recorded '+str(duration)+' seconds for this run; single timings do not establish comparable benchmarks or a cause.'
+        items.append(line)
+    parts.append('\n'.join(items))
     omitted=[s['id'] for s in meaningful if s['id'] not in {s['id'] for s in selected}]
-    if omitted:parts.append('Additional retrieved IDs not displayed: '+', '.join(omitted[:32])+(' ('+str(len(omitted)-32)+' more)' if len(omitted)>32 else '')+'. Ask for a narrower period or topic to inspect them.')
+    if omitted:parts.append(str(len(omitted))+' more matching message'+('s were' if len(omitted)!=1 else ' was')+' not displayed. Ask about a narrower topic or period to see them.')
     return '\n\n'.join(parts)
 
 def history_has_support(text,sources):

@@ -211,7 +211,7 @@ class ToolWorkflowTests(unittest.TestCase):
         analysis.update(memory_request=True,memory_sources=[source],max_retries=0)
         worker=ChatWorker('local',[{'role':'user','content':prompt}],ScriptedEngine(['','']),analysis)
         done=[];failed=[];worker.done.connect(done.append);worker.failed.connect(failed.append);worker.run()
-        self.assertFalse(failed);self.assertIn('176.3',done[0]);self.assertIn('Diagnostic:',done[0])
+        self.assertFalse(failed);self.assertIn('176.3',done[0]);self.assertIn('[M3]',done[0]);self.assertNotIn('Diagnostic:',done[0])
 
     def test_calculator_claims_and_rounding_follow_actual_runtime(self):
         from tool_workflow import calculator_answer_failures
