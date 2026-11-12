@@ -24,6 +24,20 @@ class WorkflowCancellation:
         return self.event.wait(min(self.budget.seconds_left, timeout if timeout is not None else self.budget.seconds_left)) or self.is_set()
 
 
+class StopWhen:
+    """Cancellation for one model call that also stops when `flag[0]` is set (e.g. a rambling draft).
+
+    The user's cancel event is never set by it, so a guard stop is told apart from the Stop button."""
+    def __init__(self, cancel, flag):
+        self.cancel, self.flag = cancel, flag
+
+    def is_set(self):
+        return bool(self.flag[0]) or self.cancel.is_set()
+
+    def wait(self, timeout=None):
+        return self.is_set() or bool(self.cancel.wait(timeout)) or self.is_set()
+
+
 def equivalent_key(name, arguments):
     """Conservative equivalence; exact document queries retain case/spacing."""
     args = dict(arguments)

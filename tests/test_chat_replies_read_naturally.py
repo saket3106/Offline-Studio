@@ -87,5 +87,80 @@ class ReadableHistoryAnswerTests(unittest.TestCase):
         self.assertEqual(readable_history_date('unknown (imported source)'), 'unknown (imported source)')
 
 
+RAMBLE = ("**Japan** is further north than **France**.\n\n**Correction and Clarification:**\nUpon re-evaluating the "
+          "coordinates, France is further north. But wait, let's double-check the northernmost point of Japan.\n\n"
+          "*Wait, let me re-verify the northernmost point of France.* No, that is the westernmost point.")
+
+
+class SelfCorrectionGuardTests(unittest.TestCase):
+    def test_a_draft_arguing_with_itself_is_detected(self):
+        from validators import self_correction_loop
+        self.assertTrue(self_correction_loop(RAMBLE))
+
+    def test_normal_answers_and_code_are_not(self):
+        from validators import self_correction_loop
+        for text in ('Tokyo is the capital of Japan. Actually, it became the capital in 1868.',
+                     'Wait times at the clinic are long. Let me explain the options.',
+                     '```python\n# wait, let me re-check\n# wait\nwait()\n```\nThis loop waits for the job.',
+                     '"Wait," she said. The door opened.'):
+            self.assertFalse(self_correction_loop(text), text)
+
+    def test_stop_when_never_sets_the_users_cancel(self):
+        import threading
+        from tool_workflow import StopWhen
+        user, flag = threading.Event(), [False]
+        stop = StopWhen(user, flag)
+        self.assertFalse(stop.is_set())
+        flag[0] = True
+        self.assertTrue(stop.is_set())
+        self.assertFalse(user.is_set())
+
+    def test_worker_stops_the_ramble_and_returns_the_thought_through_answer(self):
+        from types import SimpleNamespace
+        from app import ChatWorker
+        from intelligence import analyze_request
+
+        class StreamingEngine:
+            def __init__(self):
+                self.requests = []; self.runtime = SimpleNamespace(last_generation_diagnostics={})
+
+            def ensure_chat(self, *args, **kwargs):
+                return 'local'
+
+            def chat_completion(self, messages, on_token=None, cancel_event=None, **kwargs):
+                self.requests.append(kwargs)
+                if len(self.requests) == 1:
+                    for word in (RAMBLE + ' Wait, let me re-check again. ' * 40).split(' '):
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise RuntimeError('Cancelled')
+                        on_token(word + ' ')
+                    return RAMBLE
+                self.runtime.last_generation_diagnostics = {'finish_reason': 'stop'}
+                answer = 'France is further north: its mainland reaches about 51°N, while Japan reaches about 45.5°N.'
+                for word in answer.split(' '):
+                    on_token(word + ' ')
+                return answer
+
+        prompt = 'Which is further north, Japan or France?'
+        analysis = analyze_request(prompt); analysis.update(max_retries=0, selective_review=False, agent_tools=[])
+        engine = StreamingEngine()
+        worker = ChatWorker('local', [{'role': 'user', 'content': prompt}], engine, analysis)
+        done, failed = [], []
+        worker.done.connect(done.append); worker.failed.connect(failed.append); worker.run()
+        self.assertFalse(failed)
+        self.assertEqual(len(engine.requests), 2)
+        self.assertEqual(engine.requests[1].get('reasoning_effort'), 'high')
+        self.assertGreaterEqual(engine.requests[1].get('max_tokens'), 2400)
+        self.assertIn('France is further north', done[0])
+        self.assertNotIn('re-verify', done[0])
+
+    def test_chat_worker_retries_once_with_hidden_thinking(self):
+        from pathlib import Path
+        text = (Path(__file__).resolve().parents[1] / 'app.py').read_text(encoding='utf-8')
+        self.assertIn('cancel_event=StopWhen(workflow_cancel,ramble_stop)', text)
+        self.assertIn("**({'reasoning_effort':'high'} if thinking_retry[0] else", text)
+        self.assertIn('not thinking_retry[0] and recovery_prefix[0] is None and (ramble_stop[0] or self_correction_loop(visible))', text)
+
+
 if __name__ == '__main__':
     unittest.main()

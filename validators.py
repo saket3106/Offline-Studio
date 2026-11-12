@@ -17,6 +17,28 @@ from grounding import normalize_task_id
 from math_engine import number_in_text
 
 
+_SELF_CORRECTION = re.compile(
+    r"(?:^|[.!?:)\]*_]\s+|\n)\s*[*_]*(?:wait|hmm+|hold on|oops)\b[,.!:]?"
+    r"|\b(?:let me|let's|let us)\s+(?:re-?verify|re-?check|double[- ]check|re-?evaluate|re-?consider|verify|use a reliable"
+    r"|check\s+(?:\w+\s+){0,4}again|look at\s+(?:\w+\s+){0,3}again)"
+    r"|\bupon re-?(?:evaluat|examin|check)\w*"
+    r"|\bno,\s+(?:that|this|it)\s+(?:is|was|'s)\s+(?:wrong|incorrect|not|the)"
+    r"|\b(?:correction and clarification|i made an error|i was wrong|that'?s wrong)\b",
+    re.I,
+)
+
+
+def self_correction_loop(text: str, threshold: int = 3) -> bool:
+    """True when a visible answer keeps second-guessing itself ("Wait, let me re-verify…").
+
+    Without hidden thinking, a small local model sometimes argues with itself in the reply and runs until
+    the output limit (real app 13b: "Which is further north?" → 800 tokens of "Wait… No, that is…").
+    Online assistants think first and then answer; the caller stops this draft and asks again with
+    hidden thinking. Code blocks are ignored, and one or two corrections are normal writing."""
+    value = re.sub(r"```.*?(?:```|$)", " ", str(text or ""), flags=re.S)
+    return len(_SELF_CORRECTION.findall(value)) >= threshold
+
+
 def trim_to_complete_sentence(text: str, min_keep_ratio: float = 0.5) -> str:
     """End a length-truncated answer on its last complete sentence.
 

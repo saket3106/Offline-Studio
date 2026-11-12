@@ -325,11 +325,11 @@ from intelligence import (analyze_request, build_correction_messages, build_task
 
 
 
-from memory_manager import calculate_dynamic_context_budget, estimate_tokens, fit_text_to_token_budget, stable_history_window
+from memory_manager import calculate_dynamic_context_budget, estimate_tokens, fit_text_to_token_budget, stable_history_window, token_stable_history_window
 
 
 
-from validators import (build_multi_task_result, merge_numbered_task_sections,
+from validators import (self_correction_loop, build_multi_task_result, merge_numbered_task_sections,
 
 
 
@@ -6810,6 +6810,9 @@ class ChatWorker(CancelableWorker):
             completed_stream_tasks=set()
             recovery_prefix=[None]
             replacement_stream=[False]
+            # A visible draft that keeps second-guessing itself is stopped and asked again with hidden thinking.
+            ramble_stop=[False];thinking_retry=[False]
+            ramble_guard=not self.analysis.get('voice_mode') and self.analysis.get('category') not in {'writing','creative','document'}
 
 
 
@@ -6842,6 +6845,9 @@ class ChatWorker(CancelableWorker):
 
 
                 stream_chunk_lengths.append(len(str(t or '')))
+                if ramble_stop[0]:return
+                if ramble_guard and not thinking_retry[0] and not is_multi_task and len(out)%12==0 and self_correction_loop(''.join(out)):
+                    ramble_stop[0]=True;return
 
 
 
@@ -7050,7 +7056,7 @@ class ChatWorker(CancelableWorker):
 
 
 
-            from tool_workflow import ToolWorkflowBudget, WorkflowCancellation, equivalent_key, READ_ONLY, synthesis_messages,calculator_answer_failures,calculator_evidence
+            from tool_workflow import ToolWorkflowBudget, WorkflowCancellation, StopWhen, equivalent_key, READ_ONLY, synthesis_messages,calculator_answer_failures,calculator_evidence
 
 
 
@@ -7292,6 +7298,7 @@ class ChatWorker(CancelableWorker):
 
 
                     if final_stage:token_limit=max(1024,token_limit)
+                    if thinking_retry[0]:token_limit=max(2400,token_limit)
 
 
 
@@ -7352,7 +7359,7 @@ class ChatWorker(CancelableWorker):
 
 
 
-                            cancel_event=workflow_cancel,max_tokens=token_limit,
+                            cancel_event=StopWhen(workflow_cancel,ramble_stop),max_tokens=token_limit,
 
 
 
@@ -7368,7 +7375,7 @@ class ChatWorker(CancelableWorker):
 
 
 
-                            **({'reasoning_effort':('low' if recovered or final_stage and not effort_override else effort_override or self.analysis.get('reasoning_effort'))} if effort_override or self.analysis.get('reasoning_effort') else {}),
+                            **({'reasoning_effort':'high'} if thinking_retry[0] else {'reasoning_effort':('low' if recovered or final_stage and not effort_override else effort_override or self.analysis.get('reasoning_effort'))} if effort_override or self.analysis.get('reasoning_effort') else {}),
 
 
 
@@ -7535,13 +7542,17 @@ class ChatWorker(CancelableWorker):
 
                         })
                     except Exception as continuation_error:
-                        if self.cancel_event.is_set() or not retained_visible:raise
-                        generation_diagnostics.append({'finish_reason':'error','stream_error':str(continuation_error)[:400],
-                            'duration_ms':round((time.perf_counter()-call_started[0])*1000,2)})
-                        self.analysis['response_incomplete']=True
-                        self.progress.emit('The response stopped early. Your existing answer has been kept.')
-                        self.partial.emit(retained_visible)
-                        return retained_visible,retained_visible
+                        if not (ramble_stop[0] and not self.cancel_event.is_set()):
+                            if self.cancel_event.is_set() or not retained_visible:raise
+                            generation_diagnostics.append({'finish_reason':'error','stream_error':str(continuation_error)[:400],
+                                'duration_ms':round((time.perf_counter()-call_started[0])*1000,2)})
+                            self.analysis['response_incomplete']=True
+                            self.progress.emit('The response stopped early. Your existing answer has been kept.')
+                            self.partial.emit(retained_visible)
+                            return retained_visible,retained_visible
+                        generated=''.join(out);runtime_diag={'finish_reason':'self_correction_loop'}
+                        generation_diagnostics.append({'finish_reason':'self_correction_loop','duration_ms':round((time.perf_counter()-call_started[0])*1000,2),'first_token_ms':call_first_token_ms[0]})
+                        write_turn_trace(self,generation_diagnostics[-1],purpose='answer')
 
                     if self.analysis.get('memory_coverage'):
 
@@ -7679,6 +7690,15 @@ class ChatWorker(CancelableWorker):
                         visible=merge_continuation(recovery_prefix[0],visible)
                         retained_visible=visible
                         self.partial.emit(visible)
+                    if visible and ramble_guard and not is_multi_task and not thinking_retry[0] and recovery_prefix[0] is None and (ramble_stop[0] or self_correction_loop(visible)):
+                        thinking_retry[0]=True;ramble_stop[0]=False;recovery_retry_count+=1
+                        self.analysis['self_correction_retry']=True
+                        active_messages=[dict(message) for message in request_messages]
+                        replacement_stream[0]=True
+                        self.partial.emit('')
+                        self.progress.emit('Thinking it through before answering…')
+                        self._emit_activity('Thinking',stream_completed[0],current_stream_task[0])
+                        continue
                     if visible and not is_multi_task and runtime_diag.get('finish_reason')=='length':
                         # Never replace a streamed draft with a second one. End on
                         # the last complete sentence; the user can ask to Continue.
@@ -16383,8 +16403,8 @@ class App(QMainWindow):
 
 
 
-        # The window's start moves in steps so the server reuses the cached history prefix across turns.
-        selected_rows=[] if compact else stable_history_window(rows[:-1])
+        # History is trimmed rarely and in large jumps, so the server reuses the cached prefix for many turns.
+        selected_rows=[] if compact else token_stable_history_window(rows[:-1],context_limit//2,lambda row:estimate_tokens(str(row[1] or ''))+4)
 
 
 

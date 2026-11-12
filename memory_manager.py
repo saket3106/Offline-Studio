@@ -204,6 +204,30 @@ def length_target_output_tokens(requested_words: int, total_context: int | None 
     return budget
 
 
+def token_stable_history_window(prior: list, budget_tokens: int, count, max_messages: int = 40) -> list:
+    """The recent part of a chat to send, trimmed rarely and in large jumps.
+
+    Moving the window's first message makes the local server re-read everything after the system prompt
+    (Qwen3.5 is a hybrid model: its cache cannot drop a few old tokens). The count-based window moved every
+    3 turns and re-read ~1.5k tokens (2.6 s, real app 13b). Here the whole chat is kept until it outgrows
+    `budget_tokens` (or `max_messages`); then the oldest messages are dropped until only 40% of the budget
+    (and half the message cap) remains, so the next trim is many turns away and the re-read is short.
+    The start is replayed from the first message, so it is identical on every turn until the next trim,
+    and it always lands on the same role as the full chat."""
+    sizes = [max(1, int(count(row))) for row in prior]
+    budget = max(64, int(budget_tokens))
+    floor, message_floor = int(budget * 0.4), max(2, max_messages // 2)
+    start = used = 0
+    for index, size in enumerate(sizes):
+        used += size
+        if used > budget or index + 1 - start > max_messages:
+            while start < index and (used > floor or index + 1 - start > message_floor):
+                used -= sizes[start]; start += 1
+            if start % 2 and start < index:
+                used -= sizes[start]; start += 1
+    return list(prior[start:])
+
+
 def stable_history_window(prior: list, keep: int = 8, step: int = 6) -> list:
     """The recent part of a chat to send with the next message, chosen so its first message stays put.
 
