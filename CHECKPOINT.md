@@ -3,14 +3,15 @@
 ## MISSION / CURRENT PHASE
 User mission: the app works smartly and professionally like online AI apps and like local personal
 assistants (Jarvis/Alexa): very interactive Live Voice, and control of the PC. In-place install authorized.
-Phase: speed + polish audit. Route-20261113a installed (exe 79464109…). Data in UserData; Backups keep 2.
+Phase: speed + polish audit. Route-20261113b installed (exe 5277936d…). Data in UserData; Backups keep 2.
 
 ## NEXT STEP (exact, executable)
-"Summarize our chat in one sentence" pulls 3.2k tokens of memory evidence (5.2 s first token) for a 12-message chat:
-answer current-chat summaries from the chat itself. Tool turns (datetime) still rebuild the prompt (2.4k, 3.7 s).
-Probe: scratchpad cache_turns.sh (real app, CDP). Git: work on `main`; never delete Source/VCRUNTIME140*.dll / MSVCP140.dll.
+13b probe: "Give one famous dish from each country." hit the 800-token output reserve (stop=length, 24.9 s), and each
+window step (every 6 turns) re-reads ~1.5k tokens (2.6 s). Fix both. Probe: scratchpad cache_turns.sh. Git: `main`; keep Source/VCRUNTIME140*.dll / MSVCP140.dll.
 
 ## DONE
+- Readable chat summaries / past-chat answers (prose, dates, source chips; no claim codes or Diagnostic) · 2b1fcda; clock/system
+  tools only for real clock/system questions · 6655b23 · VERIFIED-REAL 13b (summary: one sentence, first token 5.2 s → 595 ms)
 - Turn 2 keeps the cache (identity without load state; host prompt cache sized by free RAM, 1 GB here) · 20408a0 ·
   VERIFIED-REAL 13a cold start: turn 2 reused 644 tokens, first token ~1000 → 294 ms; turns 3-10 230-390 ms
 - Stable history window (start moves every 3 turns) · b70ba67 · VERIFIED-REAL 12d (turns 7-10 first token 634-825 → 250-332 ms

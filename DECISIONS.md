@@ -148,3 +148,12 @@ previous conversation to its host prompt cache, but the app capped that at 128 M
 ("prompt state size 229 MiB exceeds cache size limit", so it was skipped). The cap now follows free RAM: 256 MB below
 3.5 GB, 512 MB below 6 GB, else 1 GB (2 GB on Performance with 8 GB free; Eco max 256 MB). It is a ceiling, filled
 only as states are saved. Probe after a title request: turn 2 prefill 933 ms -> 161 ms.
+
+## 2026-11-13 — Answers from past chats are written as prose, not an evidence ledger
+Owner video: "Summarize our chat" showed claim codes (M438.C15), ISO timestamps, code fragments and "Diagnostic:
+tools-…". Two changes. "our chat"/"the conversation" without a past-time word (previous, last week, all…) now means
+the current chat, so the model summarizes the chat itself instead of searching every chat. When an answer must be
+built from retrieved records, it is now a short list: who said it, a readable date, the person's own words, a plain
+note on what the record does and does not show ("asked for; not confirmed as done", "as reported; not independently
+verified", "recorded by the app"), and a numbered source chip that opens the message. Code lines and one-word
+fragments are left out (with a count). The honesty rules are unchanged; the diagnostic reference stays in metrics.
